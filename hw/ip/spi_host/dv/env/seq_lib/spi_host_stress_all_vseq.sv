@@ -2,10 +2,17 @@
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 
-// performance test vseq
-class spi_host_performance_vseq extends spi_host_smoke_vseq;
-  `uvm_object_utils(spi_host_performance_vseq)
+// sw_reset test vseq
+// sequence contraints min values on latency and delays
+// enables standard , dual and quad modes
+// resets after every iteration of transfers
+// checks for fifo and register reset values post applying sw reset
+class spi_host_stress_all_vseq extends spi_host_sw_reset_vseq;
+  `uvm_object_utils(spi_host_stress_all_vseq)
   `uvm_object_new
+
+  bit rxempty;
+  bit txempty;
 
 // constraints for simulation loops
   constraint num_trans_c {num_trans  == cfg.seq_cfg.host_spi_max_trans;}
@@ -33,13 +40,12 @@ class spi_host_performance_vseq extends spi_host_smoke_vseq;
       }
   }
 
-  virtual task start_spi_host_trans(int num_transactions, bit wait_ready = 1'b1);
+
+  virtual task body();
     cfg.seq_cfg.std_en  = 1;
-    //TODO: enable dual_en and quad_en
-    cfg.seq_cfg.dual_en = 0;
-    cfg.seq_cfg.quad_en = 0;
-    super.start_spi_host_trans(num_trans);
-  endtask
+    cfg.seq_cfg.dual_en = 1;
+    cfg.seq_cfg.quad_en = 1;
+    super.body();
+  endtask : body
 
-endclass : spi_host_performance_vseq
-
+endclass : spi_host_stress_all_vseq

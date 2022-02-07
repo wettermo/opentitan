@@ -49,13 +49,13 @@ class spi_host_base_vseq extends cip_base_vseq #(
       foreach (spi_config_regs.cpol[i]) {
         spi_config_regs.cpol[i] dist {
           1'b0 :/ 1,
-          1'b1 :/ 0
+          1'b1 :/ 1
         };
       }
       foreach (spi_config_regs.cpha[i]) {
         spi_config_regs.cpha[i] dist {
           1'b0 :/ 1,
-          1'b1 :/ 0
+          1'b1 :/ 1
         };
       }
       foreach (spi_config_regs.csnlead[i]) {
@@ -161,7 +161,7 @@ class spi_host_base_vseq extends cip_base_vseq #(
     program_control_reg();
     program_csid_reg();
     // TODO
-    // update_spi_agent_regs();
+    update_spi_agent_regs();
   endtask : program_spi_host_regs
 
   virtual task program_csid_reg();
@@ -315,6 +315,8 @@ class spi_host_base_vseq extends cip_base_vseq #(
 
       str = {str, "\n  base_vseq, values programed to the dut registers:"};
       str = {str, $sformatf("\n    csid         %0d", spi_host_ctrl_reg.csid)};
+      str = {str, $sformatf("\n    tx_watermark         %0b", spi_host_ctrl_reg.tx_watermark)};
+      str = {str, $sformatf("\n    rx_watermark         %0b", spi_host_ctrl_reg.rx_watermark)};
       str = {str, $sformatf("\n    Mode        %s",  spi_host_command_reg.mode.name())};
       str = {str, $sformatf("\n    direction    %s",  spi_host_command_reg.direction.name())};
       str = {str, $sformatf("\n    csaat        %b",  spi_host_command_reg.csaat)};
@@ -355,15 +357,15 @@ class spi_host_base_vseq extends cip_base_vseq #(
         write ? "WRITE" : "READ", addr, data, blocking, mask), UVM_HIGH)
   endtask : send_tl_access
 
-
-  virtual task access_data_fifo(ref bit [7:0] data_q[$], input spi_host_fifo_e fifo);
+  virtual task access_data_fifo(ref bit [7:0] data_q[$], input spi_host_fifo_e fifo,
+                                    bit fifo_avail_chk = 1'b1);
     bit [TL_DBW-1:0][7:0]   data          = '0;
     int                     cnt           =  0;
     bit [TL_DBW-1:0]        mask          = '0;
     bit                     wr_en         = 1;
     bit [TL_AW-1:0]         align_addr;
     // check free space in fifo
-    wait_for_fifos_available(fifo);
+    if (fifo_avail_chk) wait_for_fifos_available(fifo);
     //TODO add interrupt handling if FIFO overflow
 
     align_addr = get_aligned_tl_addr(fifo);
