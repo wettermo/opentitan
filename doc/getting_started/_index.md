@@ -63,6 +63,15 @@ On Ubuntu 18.04, the required packages can be installed with the following comma
 
 {{< pkgmgr_cmd "apt" >}}
 
+Check that you have version 9 or higher of `gcc` installed by:
+```console
+$ gcc --version
+```
+If your version of `gcc` is lower, you can try installing the higher version by:
+```console
+$ sudo apt install gcc-9
+```
+
 Some tools in this repository are written in Python 3 and require Python dependencies to be installed through `pip`.
 We recommend installing the latest version of `pip` and `setuptools` (especially if on older systems such as Ubuntu 18.04) using:
 
