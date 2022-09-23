@@ -15,7 +15,7 @@
 
 #include "sim_ctrl_extension.h"
 
-#define CHECK_MODEL 1
+#define CHECK_MODEL 2 // 0 = no model checking, 1 = model checking, exit on error, 2 = model checking, no exit on error
 
 class AESSim : public SimCtrlExtension {
   using SimCtrlExtension::SimCtrlExtension;
@@ -47,9 +47,9 @@ void AESSim::OnClock(unsigned long sim_time) {
     }
   }
 
-  if (retval) {
+  if (retval && (CHECK_MODEL ==1)) {
     VerilatorSimCtrl::GetInstance().RequestStop(false);
-  } else if (!retval && tlul_interface_.StatusDone()) {
+  } else if (tlul_interface_.StatusDone()) {
     VerilatorSimCtrl::GetInstance().RequestStop(true);
   }
 }

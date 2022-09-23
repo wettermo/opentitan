@@ -150,6 +150,9 @@ module aes_cipher_core import aes_pkg::*;
   output logic        [3:0][3:0][7:0] state_o [NumShares]
 );
 
+  //test signal for fault injection
+  logic                               fault_en;
+
   // Signals
   logic               [3:0][3:0][7:0] state_d [NumShares];
   logic               [3:0][3:0][7:0] state_q [NumShares];
@@ -229,6 +232,7 @@ module aes_cipher_core import aes_pkg::*;
   logic                               prd_masking_upd;
   logic                               prd_masking_rsd_req;
   logic                               prd_masking_rsd_ack;
+
 
   // Generate clearing signals of appropriate widths. If masking is enabled, the two shares of
   // the registers must be cleared with different pseudo-random data.
@@ -362,6 +366,7 @@ module aes_cipher_core import aes_pkg::*;
   ) u_aes_sub_bytes (
     .clk_i     ( clk_i             ),
     .rst_ni    ( rst_ni            ),
+    .fault_en  ( fault_en          ),
     .en_i      ( sub_bytes_en      ),
     .out_req_o ( sub_bytes_out_req ),
     .out_ack_i ( sub_bytes_out_ack ),
@@ -513,6 +518,7 @@ module aes_cipher_core import aes_pkg::*;
   ) u_aes_cipher_control (
     .clk_i                ( clk_i               ),
     .rst_ni               ( rst_ni              ),
+    .fault_en_o           ( fault_en            ),
 
     .in_valid_i           ( in_valid_i          ),
     .in_ready_o           ( in_ready_o          ),

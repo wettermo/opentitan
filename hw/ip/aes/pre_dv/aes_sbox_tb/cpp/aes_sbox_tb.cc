@@ -36,6 +36,7 @@ void AESSBoxTB::OnClock(unsigned long sim_time) {
 
 int main(int argc, char **argv) {
   int ret_code;
+  Verilated::commandArgs(argc, argv);
 
   // Init verilog instance
   aes_sbox_tb top;

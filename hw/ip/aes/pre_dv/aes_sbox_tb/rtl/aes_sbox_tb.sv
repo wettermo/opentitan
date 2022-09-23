@@ -15,20 +15,23 @@ module aes_sbox_tb #(
 
   import aes_pkg::*;
 
-  logic [8:0] count_d, count_q;
+  logic [9:0] count_d, count_q;
   logic [7:0] stimulus;
   ciph_op_e   op;
 
-  localparam int NUM_SBOX_IMPLS = 2;
-  localparam int NUM_SBOX_IMPLS_MASKED = 3;
+  int eff_faults;
+  int ineff_faults;
+
+  localparam int NUM_SBOX_IMPLS = 1;
+  localparam int NUM_SBOX_IMPLS_MASKED = 1;
   localparam int NumSBoxImplsTotal = NUM_SBOX_IMPLS + NUM_SBOX_IMPLS_MASKED;
   logic [7:0] responses[NumSBoxImplsTotal];
 
   // Generate the stimuli
-  assign count_d = count_q + 9'h1;
+  assign count_d = count_q + 10'h1;
   always_ff @(posedge clk_i or negedge rst_ni) begin : reg_count
     if (!rst_ni) begin
-      count_q <= '0;
+      count_q <= 9'h100;
     end else if (dom_done) begin
       count_q <= count_d;
     end
@@ -44,11 +47,6 @@ module aes_sbox_tb #(
     .data_o ( responses[0] )
   );
 
-  aes_sbox_canright aes_sbox_canright (
-    .op_i   ( op           ),
-    .data_i ( stimulus     ),
-    .data_o ( responses[1] )
-  );
 
   // Mask Generation
   logic  [7:0] masked_stimulus;
@@ -73,12 +71,9 @@ module aes_sbox_tb #(
   assign masked_stimulus = stimulus ^ in_mask;
 
   // PRD Generation
-  localparam int unsigned WidthPRDSBoxCanrightMasked        = 8;
-  localparam int unsigned WidthPRDSBoxCanrightMaskedNoreuse = 18;
-  localparam int unsigned WidthPRDSBoxDOM                   = 28;
-
-  logic                                   [31:0] prd;
-  logic [31-WidthPRDSBoxCanrightMaskedNoreuse:0] unused_prd;
+  localparam int unsigned WidthPRDSBoxDOM = 28;
+  logic                 [31:0] prd;
+  logic [31-WidthPRDSBoxDOM:0] unused_prd;
 
   always_ff @(posedge clk_i or negedge rst_ni) begin : reg_prd
     if (!rst_ni) begin
@@ -89,31 +84,16 @@ module aes_sbox_tb #(
   end
   assign unused_prd = prd[31:WidthPRDSBoxDOM];
 
-  // Instantiate Masked SBox Implementations
-  aes_sbox_canright_masked_noreuse aes_sbox_canright_masked_noreuse (
-    .op_i   ( op                                         ),
-    .data_i ( masked_stimulus                            ),
-    .mask_i ( in_mask                                    ),
-    .prd_i  ( prd[WidthPRDSBoxCanrightMaskedNoreuse-1:0] ),
-    .data_o ( masked_response[0]                         ),
-    .mask_o ( out_mask[0]                                )
-  );
 
-  aes_sbox_canright_masked aes_sbox_canright_masked (
-    .op_i   ( op                                  ),
-    .data_i ( masked_stimulus                     ),
-    .mask_i ( in_mask                             ),
-    .prd_i  ( prd[WidthPRDSBoxCanrightMasked-1:0] ),
-    .data_o ( masked_response[1]                  ),
-    .mask_o ( out_mask[1]                         )
-  );
+
 
   // Instantiate DOM SBox Implementation
   logic        dom_done;
   logic [19:0] unused_out_prd, out_prd;
-  aes_sbox_dom aes_sbox_dom (
+  aes_sbox_dom_faulted aes_sbox_dom_faulted (
     .clk_i     ( clk_i                    ),
     .rst_ni    ( rst_ni                   ),
+    .fault_en  ( 1'b1),
     .en_i      ( 1'b1                     ),
     .out_req_o ( dom_done                 ),
     .out_ack_i ( 1'b1                     ),
@@ -121,8 +101,8 @@ module aes_sbox_tb #(
     .data_i    ( masked_stimulus          ),
     .mask_i    ( in_mask                  ),
     .prd_i     ( prd[WidthPRDSBoxDOM-1:0] ),
-    .data_o    ( masked_response[2]       ),
-    .mask_o    ( out_mask[2]              ),
+    .data_o    ( masked_response[0]       ),
+    .mask_o    ( out_mask[0]              ),
     .prd_o     ( out_prd                  )
   );
   assign unused_out_prd = out_prd;
@@ -134,24 +114,37 @@ module aes_sbox_tb #(
     end
   end
 
+  logic [7:0] internal_value;
+  //assign internal_value = aes_sbox_dom_faulted.out_mask_basis_x ^ aes_sbox_dom_faulted.out_data_basis_x;
+  assign internal_value = responses[1];
+
   // Check responses, signal end of simulation
   always_ff @(posedge clk_i or negedge rst_ni) begin : tb_ctrl
-    test_done_o   <= 1'b0;
-    test_passed_o <= 1'b1;
+    if (!rst_ni) begin
+      eff_faults <= 0;
+      ineff_faults <= 0;
+    end else begin
 
-    for (int i=1; i<NumSBoxImplsTotal; i++) begin
-      if (rst_ni && dom_done && (responses[i] != responses[0])) begin
-        $display("\nERROR: Mismatch between LUT-based S-Box and Implementation %0d found.", i);
-        $display("op = %s, stimulus = 8'h%h, expected resp = 8'h%h, actual resp = 8'h%h\n",
-            (op == CIPH_FWD) ? "CIPH_FWD" : "CIPH_INV", stimulus, responses[0], responses[i]);
-        test_passed_o <= 1'b0;
-        test_done_o   <= 1'b1;
+      test_done_o   <= 1'b0;
+      test_passed_o <= 1'b1; // do never abort. we know that there might be missmatches
+
+      for (int i=1; i<NumSBoxImplsTotal; i++) begin
+        if (rst_ni && dom_done) begin
+          if (responses[i] != responses[0]) begin
+            test_passed_o <= 1'b0;
+            eff_faults <= eff_faults +1;
+          end else begin
+            ineff_faults <= ineff_faults +1;
+            $display("ineff_output: %d", internal_value);
+          end
+        end
       end
-    end
-
-    if (count_q == 9'h1FF) begin
-      $display("\nSUCCESS: Outputs of all S-Box implementations match.");
-      test_done_o <= 1'b1;
+    
+      if (count_q == 10'h200 && test_done_o == 1'b0) begin
+        $display("\nineff faults: %0d", ineff_faults);
+        $display("eff faults: %0d\n", eff_faults);
+        test_done_o <= 1'b1;
+      end
     end
   end
 

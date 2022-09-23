@@ -10,6 +10,7 @@ module aes_sub_bytes import aes_pkg::*;
 ) (
   input  logic                              clk_i,
   input  logic                              rst_ni,
+  input  logic                              fault_en,
   input  sp2v_e                             en_i,
   output sp2v_e                             out_req_o,
   input  sp2v_e                             out_ack_i,
@@ -73,22 +74,43 @@ module aes_sub_bytes import aes_pkg::*;
       // whereas the MSBs are produced by the other S-Box instances.
       assign in_prd[i][j] = {out_prd[i][aes_rot_int(j,4)], prd_i[i][j]};
 
-      aes_sbox #(
-        .SecSBoxImpl ( SecSBoxImpl )
-      ) u_aes_sbox_ij (
-        .clk_i     ( clk_i                ),
-        .rst_ni    ( rst_ni               ),
-        .en_i      ( en == SP2V_HIGH      ),
-        .out_req_o ( out_req[i][j]        ),
-        .out_ack_i ( out_ack == SP2V_HIGH ),
-        .op_i      ( op_i                 ),
-        .data_i    ( data_i[i][j]         ),
-        .mask_i    ( mask_i[i][j]         ),
-        .prd_i     ( in_prd[i][j]         ),
-        .data_o    ( data_o[i][j]         ),
-        .mask_o    ( mask_o[i][j]         ),
-        .prd_o     ( out_prd[i][j]        )
-      );
+      if (i == 0 && j == 0) begin: gen_faulted_sbox
+         aes_sbox_faulted #(
+           .SecSBoxImpl ( SecSBoxImpl )
+         ) u_aes_sbox_ij (
+           .clk_i     ( clk_i                ),
+           .rst_ni    ( rst_ni               ),
+           .fault_en  ( fault_en             ),
+           .en_i      ( en == SP2V_HIGH      ),
+           .out_req_o ( out_req[i][j]        ),
+           .out_ack_i ( out_ack == SP2V_HIGH ),
+           .op_i      ( op_i                 ),
+           .data_i    ( data_i[i][j]         ),
+           .mask_i    ( mask_i[i][j]         ),
+           .prd_i     ( in_prd[i][j]         ),
+           .data_o    ( data_o[i][j]         ),
+           .mask_o    ( mask_o[i][j]         ),
+           .prd_o     ( out_prd[i][j]        )
+         );
+      end else begin : gen_normal_sbox
+         aes_sbox_faulted #(
+           .SecSBoxImpl ( SecSBoxImpl )
+         ) u_aes_sbox_ij (
+           .clk_i     ( clk_i                ),
+           .rst_ni    ( rst_ni               ),
+           .fault_en  (1'b0                  ),
+           .en_i      ( en == SP2V_HIGH      ),
+           .out_req_o ( out_req[i][j]        ),
+           .out_ack_i ( out_ack == SP2V_HIGH ),
+           .op_i      ( op_i                 ),
+           .data_i    ( data_i[i][j]         ),
+           .mask_i    ( mask_i[i][j]         ),
+           .prd_i     ( in_prd[i][j]         ),
+           .data_o    ( data_o[i][j]         ),
+           .mask_o    ( mask_o[i][j]         ),
+           .prd_o     ( out_prd[i][j]        )
+         );
+      end
     end
   end
 

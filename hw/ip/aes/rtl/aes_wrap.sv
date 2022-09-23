@@ -19,6 +19,8 @@ module aes_wrap
   input  logic         clk_i,
   input  logic         rst_ni,
 
+  input  logic [31:0]  entropy_mask,
+
   input  logic [127:0] aes_input,
   input  logic [255:0] aes_key,
   output logic [127:0] aes_output,
@@ -90,7 +92,7 @@ module aes_wrap
     .clk_edn_i       (clk_i),
     .rst_edn_ni      (rst_ni),
     .edn_o           (edn_req),
-    .edn_i           ({edn_req, 1'b1, 32'h12345678}),
+    .edn_i           ({edn_req, 1'b1, entropy_mask}),
     .keymgr_key_i    (keymgr_key),
     .tl_i            (h2d_intg),
     .tl_o            (d2h),
@@ -134,7 +136,8 @@ module aes_wrap
     W_CTRL_AUX_SHADOWED,
     W_TRIGGER_OFFSET,
     R_STATUS,
-    FINISH
+    FINISH,
+    RESET_FSM
   } aes_wrap_ctrl_e;
   aes_wrap_ctrl_e aes_wrap_ctrl_ns, aes_wrap_ctrl_cs;
   logic [31:0] count_d, count_q;
@@ -274,7 +277,7 @@ module aes_wrap
         h2d.a_valid   = 1'b1;
         h2d.a_opcode  = PutFullData;
         h2d.a_address = {{{32-BlockAw}{1'b0}}, AES_KEY_SHARE0_5_OFFSET};
-        h2d.a_data    = aes_key[195:160];
+        h2d.a_data    = aes_key[191:160];
         if (d2h.d_valid) begin
           h2d.a_valid      = 1'b0;
           aes_wrap_ctrl_ns = W_KEY_SHARE0_6;
@@ -285,7 +288,7 @@ module aes_wrap
         h2d.a_valid   = 1'b1;
         h2d.a_opcode  = PutFullData;
         h2d.a_address = {{{32-BlockAw}{1'b0}}, AES_KEY_SHARE0_6_OFFSET};
-        h2d.a_data    = aes_key[227:196];
+        h2d.a_data    = aes_key[223:192];
         if (d2h.d_valid) begin
           h2d.a_valid      = 1'b0;
           aes_wrap_ctrl_ns = W_KEY_SHARE0_7;
@@ -296,7 +299,7 @@ module aes_wrap
         h2d.a_valid   = 1'b1;
         h2d.a_opcode  = PutFullData;
         h2d.a_address = {{{32-BlockAw}{1'b0}}, AES_KEY_SHARE0_7_OFFSET};
-        h2d.a_data    = aes_key[255:228];
+        h2d.a_data    = aes_key[255:224];
         if (d2h.d_valid) begin
           h2d.a_valid      = 1'b0;
           aes_wrap_ctrl_ns = W_KEY_SHARE1_0;
@@ -547,6 +550,14 @@ module aes_wrap
       FINISH: begin
         // Just signal end of simulation.
         test_done_o = 1'b1;
+        aes_wrap_ctrl_ns = RESET_FSM;
+      end
+
+      // "reset" FSM: jump back to IDLE, so that a new plaintext from the TB can be encrypted
+      RESET_FSM: begin
+        test_done_o = 1'b0;
+        aes_wrap_ctrl_ns = IDLE;
+        count_d = 32'b0;
       end
 
       default: begin

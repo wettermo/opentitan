@@ -58,7 +58,7 @@ module top_earlgrey #(
   parameter logic [31:0] RvDmIdcodeValue = jtag_id_pkg::JTAG_IDCODE,
   // parameters for rv_plic
   // parameters for aes
-  parameter bit SecAesMasking = 1,
+  parameter bit SecAesMasking = 0,
   parameter aes_pkg::sbox_impl_e SecAesSBoxImpl = aes_pkg::SBoxImplDom,
   parameter int unsigned SecAesStartTriggerDelay = 0,
   parameter bit SecAesAllowForcingMasks = 1'b0,

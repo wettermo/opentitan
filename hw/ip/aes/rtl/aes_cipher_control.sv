@@ -16,6 +16,8 @@ module aes_cipher_control import aes_pkg::*;
   input  logic                    clk_i,
   input  logic                    rst_ni,
 
+  output logic                    fault_en_o,
+
   // Input handshake signals
   input  sp2v_e                   in_valid_i,
   output sp2v_e                   in_ready_o,
@@ -129,6 +131,8 @@ module aes_cipher_control import aes_pkg::*;
   round_key_sel_e [Sp2VWidth-1:0]      mr_round_key_sel;
 
   logic           [Sp2VWidth-1:0][3:0] mr_rnd_ctr;
+
+  assign fault_en_o = (mr_rnd_ctr[0] == 9) ? 1'b1 : 1'b0;
 
   /////////
   // FSM //

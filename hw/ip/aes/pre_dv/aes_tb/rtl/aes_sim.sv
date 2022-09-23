@@ -7,11 +7,11 @@
 module aes_sim import aes_pkg::*;
 #(
   parameter bit          AES192Enable         = 1,
-  parameter bit          SecMasking           = 1,
-  parameter sbox_impl_e  SecSBoxImpl          = SBoxImplDom,
+  parameter bit          SecMasking           = 0,
+  parameter sbox_impl_e  SecSBoxImpl          = SBoxImplLut,
   parameter int unsigned SecStartTriggerDelay = 40,
-  parameter bit          SecAllowForcingMasks = 0,
-  parameter bit          SecSkipPRNGReseeding = 0
+  parameter bit          SecAllowForcingMasks = 1,
+  parameter bit          SecSkipPRNGReseeding = 1
 ) (
   input                     clk_i,
   input                     rst_ni,
