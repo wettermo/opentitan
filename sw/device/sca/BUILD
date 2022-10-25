@@ -34,8 +34,8 @@ opentitan_flash_binary(
 )
 
 opentitan_flash_binary(
-    name = "sha3_serial",
-    srcs = ["sha3_serial.c"],
+    name = "kmac_serial",
+    srcs = ["kmac_serial.c"],
     deps = [
         "//hw/top_earlgrey/sw/autogen:top_earlgrey",
         "//sw/device/lib/base:memory",
