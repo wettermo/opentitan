@@ -165,12 +165,17 @@ static void p256_ecdsa_sign(const uint32_t *msg, const uint32_t *private_key_d,
            kOtbnErrorOk);
   SS_CHECK(otbn_dmem_write(kEcc256NumWords, k, kOtbnVarK0) == kOtbnErrorOk);
 
-  // Copy zeroes for second shares of d and k to simplify side-channel
+  // Set high (redundant) bits of d0, k0 to all-zero to simplify side-channel
   // analysis.
-  uint32_t zero[kEcc256NumWords];
-  memset(zero, 0, kEcc256NumBytes);
-  SS_CHECK(otbn_dmem_write(kEcc256NumWords, zero, kOtbnVarD1) == kOtbnErrorOk);
-  SS_CHECK(otbn_dmem_write(kEcc256NumWords, zero, kOtbnVarK1) == kOtbnErrorOk);
+  SS_CHECK(otbn_dmem_set(kEcc256NumWords, 0, kOtbnVarD0 + kEcc256NumBytes) ==
+           kOtbnErrorOk);
+  SS_CHECK(otbn_dmem_set(kEcc256NumWords, 0, kOtbnVarK0 + kEcc256NumBytes) ==
+           kOtbnErrorOk);
+
+  // Set second shares of d and k to all-zero to simplify side-channel
+  // analysis.
+  SS_CHECK(otbn_dmem_set(kEcc256NumWords * 2, 0, kOtbnVarD1) == kOtbnErrorOk);
+  SS_CHECK(otbn_dmem_set(kEcc256NumWords * 2, 0, kOtbnVarK1) == kOtbnErrorOk);
 
   LOG_INFO("Execute");
   SS_CHECK(otbn_execute() == kOtbnErrorOk);

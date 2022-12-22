@@ -49,11 +49,11 @@ mode:
 .global k0
 .balign 32
 k0:
-  .zero 32
+  .zero 64
 .global k1
 .balign 32
 k1:
-  .zero 32
+  .zero 64
 
 /* message digest */
 .globl msg
@@ -89,11 +89,11 @@ y:
 .globl d0
 .balign 32
 d0:
-  .zero 32
+  .zero 64
 .globl d1
 .balign 32
 d1:
-  .zero 32
+  .zero 64
 
 /* verification result x_r (aka x_1) */
 .globl x_r
