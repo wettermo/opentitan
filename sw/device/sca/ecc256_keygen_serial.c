@@ -65,17 +65,12 @@ enum {
 /**
  * An array of seeds to be used in a batch
  */
-uint8_t batch_seeds[kNumBatchOpsMax][kEcc256SeedNumBytes];
+uint32_t batch_seeds[kNumBatchOpsMax][kEcc256SeedNumWords];
 
 /**
  * An array of masks to be used in a batch
  */
-uint8_t batch_masks[kNumBatchOpsMax][kEcc256SeedNumBytes];
-
-// /**
-//  * An array for the fixed seed to be used in a batch
-//  */
-// uint32_t ecc256_seed_fixed[kEcc256SeedNumWords];
+uint32_t batch_masks[kNumBatchOpsMax][kEcc256SeedNumWords];
 
 /**
  * Arrays for first and second share of masked private key d to be used in a
@@ -194,21 +189,22 @@ static void ecc256_ecdsa_secret_keygen_batch(const uint8_t *data,
   }
 
   // zero the batch digest
-  for (uint32_t j = 0; j < kEcc256SeedNumBytes; ++j) {
+  for (uint32_t j = 0; j < kEcc256SeedNumWords; ++j) {
     batch_digest[j] = 0;
   }
 
   for (uint32_t i = 0; i < num_traces; ++i) {
     if (run_fixed) {
-      memcpy(batch_seeds[i], (uint8_t *)ecc256_seed, kEcc256SeedNumBytes);
+      memcpy((uint8_t *)batch_seeds[i], (uint8_t *)ecc256_seed,
+             kEcc256SeedNumBytes);
     } else {
       // One PRNG run required to be in sync
       prng_rand_bytes(dummy, kEcc256SeedNumBytes);
-      prng_rand_bytes(batch_seeds[i], kEcc256SeedNumBytes);
+      prng_rand_bytes((uint8_t *)batch_seeds[i], kEcc256SeedNumBytes);
     }
     // One PRNG run required to be in sync
-    prng_rand_bytes(batch_masks[i], kEcc256SeedNumBytes);
-    prng_rand_bytes(batch_masks[i], kEcc256SeedNumBytes);
+    prng_rand_bytes((uint8_t *)batch_masks[i], kEcc256SeedNumBytes);
+    prng_rand_bytes((uint8_t *)batch_masks[i], kEcc256SeedNumBytes);
     // for (uint32_t j = 0; j < kEcc256SeedNumBytes; ++j) {
     //   batch_masks[i][j] = 0;
     // }
@@ -219,8 +215,7 @@ static void ecc256_ecdsa_secret_keygen_batch(const uint8_t *data,
   }
 
   for (uint32_t i = 0; i < num_traces; ++i) {
-    p256_run_keygen(kEcc256ModePrivateKeyOnly, (uint32_t *)batch_seeds[i],
-                    (uint32_t *)batch_masks[i]);
+    p256_run_keygen(kEcc256ModePrivateKeyOnly, batch_seeds[i], batch_masks[i]);
 
     // Read results.
     SS_CHECK_STATUS_OK(
