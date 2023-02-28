@@ -85,7 +85,14 @@ uint32_t d1_batch[kEcc256SeedNumWords];
  * Used in the 'b' (batch capture) command for indicating whether to use fixed
  * or random message.
  */
-static bool run_fixed = false;
+static bool run_fixed = true;
+
+/**
+ * Masking indicator.
+ *
+ * Used in the 'b' (batch capture) command for indicating whether to use masks.
+ */
+static bool en_masks = false;
 
 OTBN_DECLARE_APP_SYMBOLS(p256_key_from_seed_sca);
 
@@ -130,9 +137,26 @@ uint32_t ecc256_seed[kEcc256SeedNumWords] = {
 };
 
 /**
+ * Simple serial 'm' (set masks enable) command handler.
+ *
+ * This can be used for batch mode.
+ *
+ * @param enable 1 => masks enabled, 0 => masks disabled.
+ * @param enable_len Length of sent enable value.
+ */
+static void ecc256_en_masks(const uint8_t *enable, size_t enable_len) {
+  SS_CHECK(enable_len == 1);
+  if (*enable){
+    en_masks = true;
+  } else{
+    en_masks = false;
+  }
+}
+
+/**
  * Simple serial 'x' (set seed) command handler.
  *
- * The key must be `kEcc256SeedNumBytes` bytes long.
+ * The seed must be `kEcc256SeedNumBytes` bytes long.
  *
  * @param seed Value for seed share.
  * @param seed_len Length of seed share.
@@ -198,17 +222,20 @@ static void ecc256_ecdsa_secret_keygen_batch(const uint8_t *data,
       memcpy((uint8_t *)batch_seeds[i], (uint8_t *)ecc256_seed,
              kEcc256SeedNumBytes);
     } else {
-      // One PRNG run required to be in sync
+      // One additional PRNG run required to be in sync with host
       prng_rand_bytes(dummy, kEcc256SeedNumBytes);
       prng_rand_bytes((uint8_t *)batch_seeds[i], kEcc256SeedNumBytes);
     }
-    // One PRNG run required to be in sync
-    prng_rand_bytes((uint8_t *)batch_masks[i], kEcc256SeedNumBytes);
-    prng_rand_bytes((uint8_t *)batch_masks[i], kEcc256SeedNumBytes);
-    // for (uint32_t j = 0; j < kEcc256SeedNumBytes; ++j) {
-    //   batch_masks[i][j] = 0;
-    // }
-    // Two PRNG runs required to be in sync
+    if (en_masks) {
+      // One additional PRNG run required to be in sync with host
+      prng_rand_bytes((uint8_t *)batch_masks[i], kEcc256SeedNumBytes);
+      prng_rand_bytes((uint8_t *)batch_masks[i], kEcc256SeedNumBytes);
+    } else {
+      for (uint32_t j = 0; j < kEcc256SeedNumWords; ++j) {
+        batch_masks[i][j] = 0;
+      }
+    }
+    // Two PRNG runs required to be in sync with host
     prng_rand_bytes(dummy, kEcc256SeedNumBytes);
     prng_rand_bytes(dummy, kEcc256SeedNumBytes);
     run_fixed = dummy[0] & 0x1;
@@ -379,6 +406,8 @@ static void simple_serial_main(void) {
   SS_CHECK(simple_serial_register_handler('p', ecc256_ecdsa_gen_keypair) ==
            kSimpleSerialOk);
   SS_CHECK(simple_serial_register_handler('x', ecc256_set_seed) ==
+           kSimpleSerialOk);
+  SS_CHECK(simple_serial_register_handler('m', ecc256_en_masks) ==
            kSimpleSerialOk);
 
   LOG_INFO("Load p256 keygen from seed app into OTBN");
