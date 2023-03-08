@@ -56,36 +56,7 @@ enum {
    * Mode option for the ECDSA keygen app (generates the full keypair).
    */
   kEcc256ModeKeypair = 2,
-  /**
-   * Max number of traces per batch.
-   */
-  kNumBatchOpsMax = 256,
 };
-
-/**
- * An array of seeds to be used in a batch
- */
-uint32_t batch_seeds[kNumBatchOpsMax][kEcc256SeedNumWords];
-
-/**
- * An array of masks to be used in a batch
- */
-uint32_t batch_masks[kNumBatchOpsMax][kEcc256SeedNumWords];
-
-/**
- * Arrays for first and second share of masked private key d to be used in a
- * batch
- */
-uint32_t d0_batch[kEcc256SeedNumWords];
-uint32_t d1_batch[kEcc256SeedNumWords];
-
-/**
- * Fixed-message indicator.
- *
- * Used in the 'b' (batch capture) command for indicating whether to use fixed
- * or random message.
- */
-static bool run_fixed = true;
 
 /**
  * Masking indicator.
@@ -201,60 +172,69 @@ static void p256_run_keygen(uint32_t mode, const uint32_t *seed,
 static void ecc256_ecdsa_secret_keygen_batch(const uint8_t *data,
                                              size_t data_len) {
   uint32_t num_traces = 0;
-  uint32_t out[kEcc256SeedNumWords];
-  uint32_t batch_digest[kEcc256SeedNumWords];
-  uint8_t dummy[kEcc256SeedNumBytes];
   SS_CHECK(data_len == sizeof(num_traces));
   num_traces = read_32(data);
 
-  if (num_traces > kNumBatchOpsMax) {
-    LOG_ERROR("Too many traces for one batch.");
-    return;
+  // All-zero mask array to avoid memcopy repetitions
+  // zero the batch digest, curr_mask, curr_seed, dummy, curr_d0/d1_batch
+  uint32_t zero_mask[kEcc256SeedNumWords];
+  uint32_t batch_digest[kEcc256SeedNumWords];
+  uint32_t curr_mask[kEcc256SeedNumWords];
+  uint32_t curr_seed[kEcc256SeedNumWords];
+  uint32_t dummy[kEcc256SeedNumWords];
+  uint32_t curr_d0_batch[kEcc256SeedNumWords];
+  uint32_t curr_d1_batch[kEcc256SeedNumWords];
+  for (uint32_t i = 0; i < kEcc256SeedNumWords; ++i) {
+    zero_mask[i] = 0;
+    batch_digest[i] = 0;
+    curr_mask[i] = 0;
+    curr_seed[i] = 0;
+    dummy[i] = 0;
+    curr_d0_batch[i] = 0;
+    curr_d1_batch[i] = 0;
   }
 
-  // zero the batch digest
-  for (uint32_t j = 0; j < kEcc256SeedNumWords; ++j) {
-    batch_digest[j] = 0;
-  }
-
+  // Main batch mode loop
+  static bool run_fixed = true;
   for (uint32_t i = 0; i < num_traces; ++i) {
     if (run_fixed) {
-      memcpy(batch_seeds[i], ecc256_seed, kEcc256SeedNumBytes);
+      if (en_masks) {
+        prng_rand_bytes((unsigned char *)curr_mask, kEcc256SeedNumBytes);
+        p256_run_keygen(kEcc256ModePrivateKeyOnly, ecc256_seed, curr_mask);
+      } else {
+        p256_run_keygen(kEcc256ModePrivateKeyOnly, ecc256_seed, zero_mask);
+      }
     } else {
-      prng_rand_bytes((unsigned char *)batch_seeds[i], kEcc256SeedNumBytes);
-    }
-    if (en_masks) {
-      prng_rand_bytes((unsigned char *)batch_masks[i], kEcc256SeedNumBytes);
-    } else {
-      for (uint32_t j = 0; j < kEcc256SeedNumWords; ++j) {
-        batch_masks[i][j] = 0;
+      prng_rand_bytes((unsigned char *)curr_seed, kEcc256SeedNumBytes);
+      if (en_masks) {
+        prng_rand_bytes((unsigned char *)curr_mask, kEcc256SeedNumBytes);
+        p256_run_keygen(kEcc256ModePrivateKeyOnly, curr_seed, curr_mask);
+      } else {
+        p256_run_keygen(kEcc256ModePrivateKeyOnly, curr_seed, zero_mask);
       }
     }
-    // Another PRNG run to determine 'run_fixed' for the next cycle.
-    prng_rand_bytes(dummy, kEcc256SeedNumBytes);
-    run_fixed = dummy[0] & 0x1;
-  }
 
-  for (uint32_t i = 0; i < num_traces; ++i) {
-    p256_run_keygen(kEcc256ModePrivateKeyOnly, batch_seeds[i], batch_masks[i]);
+    // Another PRNG run to determine 'run_fixed' for the next cycle.
+    prng_rand_bytes((unsigned char *)dummy, kEcc256SeedNumBytes);
+    run_fixed = dummy[0] & 0x1;
 
     // Read results.
     SS_CHECK_STATUS_OK(
-        otbn_dmem_read(kEcc256SeedNumWords, kOtbnVarD0, d0_batch));
+        otbn_dmem_read(kEcc256SeedNumWords, kOtbnVarD0, curr_d0_batch));
     SS_CHECK_STATUS_OK(
-        otbn_dmem_read(kEcc256SeedNumWords, kOtbnVarD1, d1_batch));
+        otbn_dmem_read(kEcc256SeedNumWords, kOtbnVarD1, curr_d1_batch));
 
     // The correctness of each batch is verified by computing and sending
     // the batch digest. This digest is computed by XORing all d0 shares of
     // the batch.
     for (uint32_t j = 0; j < kEcc256SeedNumWords; ++j) {
-      batch_digest[j] ^= d0_batch[j];
+      batch_digest[j] ^= curr_d0_batch[j];
     }
   }
 
   // Send the batch digest to the host for verification.
-  simple_serial_send_packet('r', (uint8_t *)batch_digest,
-                            kEcc256SeedNumWords * 4);
+  simple_serial_send_packet('r', (unsigned char *)batch_digest,
+                            kEcc256SeedNumBytes);
 }
 
 /**
