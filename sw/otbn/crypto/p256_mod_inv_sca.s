@@ -73,10 +73,10 @@ main:
   jal       x1, mod_mul_320x128
 
   /* w0 <= (w0+w19) mod n = (k * alpha) mod n */
-  bn.addm   w0, w0, w19
+  bn.addm   w1, w0, w19
 
   /* w1 <= w0^-1 mod n = (k * alpha)^-1 mod n */
-  jal       x1, mod_inv
+  /*jal       x1, mod_inv*/
 
   /* Store result. */
   li        x2, 1
