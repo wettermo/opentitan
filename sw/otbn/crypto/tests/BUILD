@@ -325,6 +325,17 @@ otbn_sim_test(
 )
 
 otbn_sim_test(
+    name = "p256_ecdh_shared_key_test",
+    srcs = [
+        "p256_ecdh_shared_key_test.s",
+    ],
+    exp = "p256_ecdh_shared_key_test.exp",
+    deps = [
+        "//sw/otbn/crypto:p256",
+    ],
+)
+
+otbn_sim_test(
     name = "p384_base_mult_test",
     srcs = [
         "p384_base_mult_test.s",

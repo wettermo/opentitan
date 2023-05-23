@@ -20,6 +20,7 @@
 .globl proj_add
 .globl mod_inv
 .globl mod_mul_320x128
+.globl p256_ecdh_shared_key
 
 .text
 
@@ -1962,6 +1963,43 @@ p256_scalar_mult:
   li        x2, 11
   bn.sid    x2++, 0(x21)
   bn.sid    x2, 0(x22)
+
+  ret
+
+/**
+ * Function to test ecdh shared key generation.
+ */
+p256_ecdh_shared_key:
+  /* Generate shared key d*Q.
+       dmem[x] <= (d*Q).x
+       dmem[y] <= (d*Q).y */
+  jal      x1, p256_scalar_mult
+
+  /* TODO: `p256_scalar_mult` and the code below briefly handle the shared key
+     in unmasked form. The best way to fixing this is likely:
+       - modify scalar_mult_int to return projective coordinates
+       - get additive arithmetic mask for x before converting it to affine
+       - multiply both shares by Z^-1 to convert to affine form
+       - run a safe arithmetic-to-boolean conversion algorithm
+ */
+
+  /* Fetch a fresh random number for blinding.
+       w2 <= URND() */
+  bn.wsrr   w2, 0x2 /* URND */
+
+  /* Store the random number as the second share.
+       dmem[y] <= w2 */
+  li        x2, 2
+  la        x4, y
+  bn.sid    x2, 0(x4)
+
+  /* Blind the x-coordinate.
+       dmem[x] <= dmem[x] ^ w2 */
+  li        x3, 3
+  la        x4, x
+  bn.lid    x3, 0(x4)
+  bn.xor    w3, w3, w2
+  bn.sid    x3, 0(x4)
 
   ret
 
