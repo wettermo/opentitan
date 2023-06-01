@@ -336,6 +336,36 @@ otbn_sim_test(
 )
 
 otbn_sim_test(
+    name = "p256_mod_inv_test",
+    srcs = [
+        "p256_mod_inv_test.s",
+    ],
+    exp = "p256_mod_inv_test.exp",
+    deps = [
+        "//sw/otbn/crypto:p256",
+    ],
+)
+
+otbn_sim_test(
+    name = "mod_mul_256_test",
+    srcs = [
+        "mod_mul_256_test.s",
+    ],
+    exp = "mod_mul_256_test.exp",
+    deps = [
+        "//sw/otbn/crypto:p256",
+    ],
+)
+
+otbn_sim_test(
+    name = "sub_test",
+    srcs = [
+        "sub_test.s",
+    ],
+    exp = "sub_test.exp",
+)
+
+otbn_sim_test(
     name = "p384_base_mult_test",
     srcs = [
         "p384_base_mult_test.s",

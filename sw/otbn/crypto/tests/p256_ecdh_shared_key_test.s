@@ -17,21 +17,31 @@
 
 p256_ecdh_shared_key_test:
 
-  /* call scalar point multiplication routine in P-256 lib */
+  /* Call scalar point multiplication routine for shared key generation in P-256 lib. */
   jal      x1, p256_ecdh_shared_key
 
-  /* unmask the x coordinate (shared key)
-       dmem[x] <= dmem[x] ^ dmem[y] */
+  /* Arithmetical unmasking of the x coordinate (shared key).
+     The bn.sub instruction inverts the arithmetic masking
+     without any additional operations as it is a cyclic subtraction.
+       dmem[x] <= dmem[x] - dmem[m_x] */
+
+  /* w3 <= dmem[x] */
   li        x3, 3
   la        x4, x
   bn.lid    x3, 0(x4)
-  bn.xor    w3, w3, w2
-  bn.sid    x3, 0(x4)
 
-  /* copy result to wide reg file */
-  li       x2, 0
+  /* w4 <= dmem[m_x] */
+  li        x3, 4
+  la        x4, m_x
+  bn.lid    x3, 0(x4)
+
+  /* w0 <= dmem[x] - dmem[m_x] */
+  bn.subm    w0, w3, w4
+
+  /* dmem[x] <= w0 */
+  li       x2, 5
   la       x3, x
-  bn.lid   x2++, 0(x3)
+  bn.sid   x2, 0(x3)
 
   ecall
 
@@ -88,3 +98,9 @@ y:
   .word 0x43dd09ea
   .word 0x1f31c143
   .word 0x42a1c697
+
+/* shared key mask value */
+.globl m_x
+.balign 32
+m_x:
+  .zero 32

@@ -19,8 +19,10 @@
 /* Exposed only for testing or SCA purposes. */
 .globl proj_add
 .globl mod_inv
+.globl mod_mul_256x256
 .globl mod_mul_320x128
 .globl p256_ecdh_shared_key
+.globl p256_scalar_mult_ecdh
 
 .text
 
@@ -1030,10 +1032,12 @@ proj_double:
 
 
 /**
- * P-256 scalar point multiplication in affine space
+ * P-256 scalar point multiplication in affine -> projective space
  *
  * returns R = k*P = k*(x_p, y_p)
- *         with R, P being valid P-256 curve points in affine coordinates
+ *         with R being a valid P-256 curve point in projective
+ *              (old: affine) coordinates,
+ *              P being a valid curve point in affine space,
  *              k being a 256 bit scalar
  *
  * This routine performs scalar multiplication based on the group laws
@@ -1067,11 +1071,12 @@ proj_double:
  * @param[in]  w27: b, curve domain parameter
  * @param[in]  w31: all-zero
  * @param[in]  MOD: p, modulus, 2^256 > p > 2^255.
- * @param[out]  w11: x_r, affine x-coordinate of resulting point
- * @param[out]  w12: y_r, affine y-coordinate of resulting point
+ * @param[out]  w8: x_r, projective x-coordinate of resulting point
+ * @param[out]  w9: y_r, projective y-coordinate of resulting point
+ * @param[out]  w10: z_r, projective y-coordinate of resulting point
  *
  * Flags: When leaving this subroutine, the M, L and Z flags of FG0 depend on
- *        the computed affine y-coordinate.
+ *        the computed projective y-coordinate.
  *
  * clobbered registers: x2, x3, x10, w0 to w30
  * clobbered flag groups: FG0
@@ -1228,7 +1233,7 @@ scalar_mult_int:
 
   /* convert back to affine coordinates
      R = (x_a, y_a) = (w11, w12) */
-  jal       x1, proj_to_affine
+  /* jal       x1, proj_to_affine */
 
   ret
 
@@ -1320,6 +1325,10 @@ p256_sign:
   la        x21, p256_gx
   la        x22, p256_gy
   jal       x1, scalar_mult_int
+
+  /* convert back to affine coordinates
+     R = (x_a, y_a) = (w11, w12) */
+  jal       x1, proj_to_affine
 
   /* setup modulus n (curve order) and Barrett constant
      MOD <= w29 <= n = dmem[p256_n]; w28 <= u_n = dmem[p256_u_n]  */
@@ -1519,6 +1528,10 @@ p256_base_mult:
   la        x21, p256_gx
   la        x22, p256_gy
   jal       x1, scalar_mult_int
+
+  /* convert back to affine coordinates
+     R = (x_a, y_a) = (w11, w12) */
+  jal       x1, proj_to_affine
 
   /* store result (affine coordinates) in dmem
      dmem[x] <= x_a = w11
@@ -1904,7 +1917,6 @@ p256_verify:
 
   ret
 
-
 /**
  * Externally callable wrapper for P-256 scalar point multiplication
  *
@@ -1957,6 +1969,10 @@ p256_scalar_mult:
   la        x22, y
   jal       x1, scalar_mult_int
 
+  /* Convert masked results back to affine coordinates.
+     R = (x_a, y_a) = (w11, w12) */
+  jal       x1, proj_to_affine
+
   /* store result (affine coordinates) in dmem
      dmem[x] <= x_a = w11
      dmem[y] <= y_a = w12 */
@@ -1967,13 +1983,158 @@ p256_scalar_mult:
   ret
 
 /**
+ * Externally callable wrapper for P-256 scalar point multiplication
+ *
+ * returns R = k*P = k*(x_am, y_am)
+ *         with R, P being valid arithmetically masked P-256 curve points
+ *              in affine form, k being a 256 bit scalar.
+ *
+ * This routine assumes that the scalar k is provided in two shares, k0 and k1,
+ * where:
+ *   k = (k0 + k1) mod n
+ *
+ * Sets up context and calls internal scalar multiplication routine.
+ * This routine runs in constant time.
+ *
+ * @param[in]      dmem[k0]:  first share of scalar k (256 bits)
+ * @param[in]      dmem[k1]:  second share of scalar k (256 bits)
+ * @param[in]      dmem[x]:   affine x-coordinate in dmem
+ * @param[in]      dmem[y]:   affine y-coordinate in dmem
+ * @param[out]     dmem[x]:   affine arithmetically masked x-coordinate in dmem
+ * @param[out]     dmem[y]:   affine arithmetically masked y-coordinate in dmem
+ * @param[out]     dmem[m_x]:   arithmetic mask for x coordinate in dmem
+ * @param[out]     dmem[m_y]:   arithmetic mask for y coordinate in dmem
+ *
+ * Flags: When leaving this subroutine, the M, L and Z flags of FG0 depend on
+ *        the computed affine y-coordinate.
+ *
+ * clobbered registers: x2, x3, x16, x17, x21, x22, w0 to w25
+ * clobbered flag groups: FG0
+ */
+p256_scalar_mult_ecdh:
+
+  /* init all-zero register */
+  bn.xor    w31, w31, w31
+
+  /* Load first share of secret key k from dmem.
+       w0,w1 = dmem[k0] */
+  la        x16, k0
+  li        x2, 0
+  bn.lid    x2, 0(x16++)
+  li        x2, 1
+  bn.lid    x2, 0(x16)
+
+  /* Load second share of secret key k from dmem.
+       w2,w3 = dmem[k1] */
+  la        x16, k1
+  li        x2, 2
+  bn.lid    x2, 0(x16++)
+  li        x2, 3
+  bn.lid    x2, 0(x16)
+
+  /* Call internal scalar multiplication routine.
+     Returns point in projective coordinates.
+     R = (x, y, z) = (w8, w9, w10) <= k*P = w0*P */
+  la        x21, x
+  la        x22, y
+  jal       x1, scalar_mult_int
+
+  /* Arithmetic masking:
+   1. Generate two random masks (for x and y)
+   2. Add masks to projective x and y coordinate
+      (x, y, z) -> ((x + m) mod 2^256,
+                    (y + m) mod 2^256,
+                     z)
+   3. Convert masked curve point back to affine
+      form.
+   4. Multiply masks with z^-1 for use in
+      affine space. */
+
+  /* Fetch two fresh random numbers as masks.
+       w2 <= URND()
+       w3 <= URND() */
+  bn.wsrr   w2, 0x2 /* URND */
+  bn.wsrr   w3, 0x2 /* URND */
+
+  /* Add random masks to x and y coordinate of
+     projective point.
+     The addition has to be done within the underlying
+     finite field -> mod p.
+     w8 = (w8 + w2) mod p
+     w9 = (w9 + w2) mod p */
+  bn.addm    w8, w8, w2
+  bn.addm    w9, w9, w3
+
+  /* Convert masked results back to affine coordinates.
+     R = (x_a, y_a) = (w11, w12) */
+  jal       x1, proj_to_affine
+
+  /* Store result (masked affine coordinates) in dmem.
+     dmem[x] <= x_a = w11
+     dmem[y] <= y_a = w12 */
+  li        x2, 11
+  bn.sid    x2++, 0(x21)
+  bn.sid    x2, 0(x22)
+
+  /* Get modular inverse of projective z coordinate
+     and multiply the random masks with z^-1 to
+     also convert them into affine space. */
+
+  /* Load barrett constant as input for
+     mod_mul_256x256.
+     w28 = dmem[p256_u_p] */
+  li        x2, 28
+  la        x4, p256_u_p
+  bn.lid    x2, 0(x4)
+
+  /* Get field modulus p.
+     w29 <= MOD() */
+  bn.wsrr   w29, 0x00 /* MOD */
+
+  /* Move z^-1 and x coordinate mask to
+     mod_mul_256x256 input WDRs.
+     z^-1 is still stored in w14 from previous
+     proj_to_affine call.
+     w25 <= w14 = z^-1
+     w24 <= w2 = m_x */
+  bn.mov    w25, w14
+  bn.mov    w24, w2
+
+  /* Compute modular multiplication of m_x and z^-1.
+     w19 = w24 * w25 mod w29 = m_x * z^-1 mod p */
+  jal       x1, mod_mul_256x256
+
+  /* Store "affine" mask to DMEM.
+     dmem[m_x] <= w19 = m_x * z^-1 mod p */
+  li        x2, 19
+  la        x4, m_x
+  bn.sid    x2, 0(x4)
+
+  /* Move y coordinate mask to
+     mod_mul_256x256 input WDR.
+     w24 <= w2 = m_y */
+  bn.mov    w24, w3
+
+  /* Compute modular multiplication of m_y and z^-1.
+     w19 = w24 * w25 mod w29 = m_y * z^-1 mod p */
+  jal       x1, mod_mul_256x256
+
+  /* Store "affine" mask to DMEM.
+     dmem[m_y] <= w19 = m_y * z^-1 mod p */
+  li        x2, 19
+  la        x4, m_y
+  bn.sid    x2, 0(x4)
+
+  ret
+
+/**
  * Function to test ecdh shared key generation.
  */
 p256_ecdh_shared_key:
   /* Generate shared key d*Q.
        dmem[x] <= (d*Q).x
        dmem[y] <= (d*Q).y */
-  jal      x1, p256_scalar_mult
+  jal      x1, p256_scalar_mult_ecdh
 
   /* TODO: `p256_scalar_mult` and the code below briefly handle the shared key
      in unmasked form. The best way to fixing this is likely:
@@ -1983,23 +2144,7 @@ p256_ecdh_shared_key:
        - run a safe arithmetic-to-boolean conversion algorithm
  */
 
-  /* Fetch a fresh random number for blinding.
-       w2 <= URND() */
-  bn.wsrr   w2, 0x2 /* URND */
-
-  /* Store the random number as the second share.
-       dmem[y] <= w2 */
-  li        x2, 2
-  la        x4, y
-  bn.sid    x2, 0(x4)
-
-  /* Blind the x-coordinate.
-       dmem[x] <= dmem[x] ^ w2 */
-  li        x3, 3
-  la        x4, x
-  bn.lid    x3, 0(x4)
-  bn.xor    w3, w3, w2
-  bn.sid    x3, 0(x4)
+  /* TODO: call arithmetic to boolean algorithm */
 
   ret
 
@@ -2293,6 +2438,10 @@ boolean_to_arithmetic:
   ret
 
 /**
+ * Convert arithmetic shares to boolean ones using Goubin's algorithm.
+ */
+
+/**
  * P-256 ECDSA secret key generation.
  *
  * Returns the secret key d in two 320-bit shares d0 and d1, such that:
@@ -2561,6 +2710,20 @@ x:
 .balign 32
 .weak y
 y:
+  .zero 32
+
+/* scalar mult mask value for x coordinate
+   in affine form */
+.balign 32
+.weak m_x
+m_x:
+  .zero 32
+
+/* scalar mult mask value for y coordinate
+   in affine form */
+.balign 32
+.weak m_y
+m_y:
   .zero 32
 
 /* private key d (in two 320b shares) */
