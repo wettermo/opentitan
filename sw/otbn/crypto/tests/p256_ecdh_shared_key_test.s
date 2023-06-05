@@ -21,9 +21,7 @@ p256_ecdh_shared_key_test:
   jal      x1, p256_ecdh_shared_key
 
   /* Arithmetical unmasking of the x coordinate (shared key).
-     The bn.sub instruction inverts the arithmetic masking
-     without any additional operations as it is a cyclic subtraction.
-       dmem[x] <= dmem[x] - dmem[m_x] */
+       dmem[x] <= dmem[x] + dmem[m_x] */
 
   /* w3 <= dmem[x] */
   li        x3, 3
@@ -35,8 +33,8 @@ p256_ecdh_shared_key_test:
   la        x4, m_x
   bn.lid    x3, 0(x4)
 
-  /* w0 <= dmem[x] - dmem[m_x] */
-  bn.subm    w0, w3, w4
+  /* w0 <= dmem[x] + dmem[m_x] */
+  bn.addm    w0, w3, w4
 
   /* dmem[x] <= w0 */
   li       x2, 5

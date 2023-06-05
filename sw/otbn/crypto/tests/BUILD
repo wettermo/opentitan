@@ -336,6 +336,17 @@ otbn_sim_test(
 )
 
 otbn_sim_test(
+    name = "p256_arithmetic_to_boolean_test",
+    srcs = [
+        "p256_arithmetic_to_boolean_test.s",
+    ],
+    exp = "p256_arithmetic_to_boolean_test.exp",
+    deps = [
+        "//sw/otbn/crypto:p256",
+    ],
+)
+
+otbn_sim_test(
     name = "p256_mod_inv_test",
     srcs = [
         "p256_mod_inv_test.s",

@@ -23,6 +23,7 @@
 .globl mod_mul_320x128
 .globl p256_ecdh_shared_key
 .globl p256_scalar_mult_ecdh
+.globl arithmetic_to_boolean
 
 .text
 
@@ -2041,9 +2042,9 @@ p256_scalar_mult_ecdh:
 
   /* Arithmetic masking:
    1. Generate two random masks (for x and y)
-   2. Add masks to projective x and y coordinate
-      (x, y, z) -> ((x + m) mod 2^256,
-                    (y + m) mod 2^256,
+   2. Subtract masks from projective x and y coordinate
+      (x, y, z) -> ((x - m) mod p,
+                    (y - m) mod p,
                      z)
    3. Convert masked curve point back to affine
       form.
@@ -2056,14 +2057,14 @@ p256_scalar_mult_ecdh:
   bn.wsrr   w2, 0x2 /* URND */
   bn.wsrr   w3, 0x2 /* URND */
 
-  /* Add random masks to x and y coordinate of
+  /* Subtract random masks to x and y coordinate of
      projective point.
      The addition has to be done within the underlying
      finite field -> mod p.
-     w8 = (w8 + w2) mod p
-     w9 = (w9 + w2) mod p */
-  bn.addm    w8, w8, w2
-  bn.addm    w9, w9, w3
+     w8 = (w8 - w2) mod p
+     w9 = (w9 - w2) mod p */
+  bn.subm    w8, w8, w2
+  bn.subm    w9, w9, w3
 
   /* Convert masked results back to affine coordinates.
      R = (x_a, y_a) = (w11, w12) */
@@ -2076,7 +2077,7 @@ p256_scalar_mult_ecdh:
   bn.sid    x2++, 0(x21)
   bn.sid    x2, 0(x22)
 
-  /* Get modular inverse of projective z coordinate
+  /* Get modular inverse z^-1 of projective z coordinate
      and multiply the random masks with z^-1 to
      also convert them into affine space. */
 
@@ -2439,7 +2440,76 @@ boolean_to_arithmetic:
 
 /**
  * Convert arithmetic shares to boolean ones using Goubin's algorithm.
+ *
+ * We use Goubin's boolean-to-arithmetic masking algorithm to switch from
+ * an arithmetic masking scheme to a boolean one without ever unmasking the
+ * seed. See Algorithm 2 here:
+ * https://link.springer.com/content/pdf/10.1007/3-540-44709-1_2.pdf
+ *
+ * This routine runs in constant time.
+ *
+ * Flags: Flags have no meaning beyond the scope of this subroutine.
+ *
+ * @param[in]  w19: mask r
+ * @param[in]  w11: arithmetically masked value A, such that x = A + r
+ * @param[out] w20: boolean masked value x', such that x = x' ^ r
+ *
+ * clobbered registers: w1, w2, w3, w11, w19, and w20
+ * clobbered flag groups: FG0
  */
+arithmetic_to_boolean:
+  /* w1 = gamma   <= URND */
+  bn.wsrr   w1, 2
+
+  /* w2 = T       <= 2 * w1 = 2 * gamma */
+  bn.add    w2, w1, w1
+
+  /* w20 = x'     <= w1 ^ w19 = gamma ^ r */
+  bn.xor    w20, w1, w19
+
+  /* w3 = omega   <= w1 & w20 = gamma & x' */
+  bn.and    w3, w1, w20
+
+  /* w20 = x'     <= w2 ^ w11 = T ^ A */
+  bn.xor    w20, w2, w11
+
+  /* w1 = gamma   <= w1 ^ w20 = gamma ^ x' */
+  bn.xor    w1, w1, w20
+
+  /* w1 = gamma   <= w1 & w19 = gamma & r */
+  bn.and    w1, w1, w19
+
+  /* w3 = omega   <= w3 ^ w1 = omega ^ gamma */
+  bn.xor    w3, w3, w1
+
+  /* w1 = gamma   <= w2 & w11 = T & A */
+  bn.and    w1, w2, w11
+
+  /* w3 = omega   <= w3 ^ w1 = omega ^ gamma */
+  bn.xor    w3, w3, w1
+
+  /* Loop for k = 1 to K - 1 = 256 - 1 */
+  loopi     255, 5
+
+    /* w1 = gamma <= w2 & w19 = T & r */
+    bn.and     w1, w2, w19
+
+    /* w1 = gamma <= w1 ^ w3 = gamma ^ omega */
+    bn.xor     w1, w1, w3
+
+    /* w2 = T     <= w2 & w11 = T & A */
+    bn.and     w2, w2, w11
+
+    /* w1 = gamma <= w1 ^ w2 = gamma ^ T */
+    bn.xor     w1, w1, w2
+
+    /* w2 = T     <= 2 * w1 = 2 * gamma */
+    bn.add     w2, w1, w1
+
+  /* w20 = x'     <= w20 ^ w2 = x' ^ T */
+  bn.xor    w20, w20, w2
+
+  ret
 
 /**
  * P-256 ECDSA secret key generation.
