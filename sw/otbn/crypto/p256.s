@@ -2056,6 +2056,8 @@ p256_scalar_mult_ecdh:
        w3 <= URND() */
   bn.wsrr   w2, 0x2 /* URND */
   bn.wsrr   w3, 0x2 /* URND */
+  /*bn.addm   w2, w2, w31 /* mod p */
+  /*bn.addm   w3, w3, w31 /* mod p */
 
   /* Subtract random masks to x and y coordinate of
      projective point.
@@ -2143,7 +2145,7 @@ p256_ecdh_shared_key:
        - get additive arithmetic mask for x before converting it to affine
        - multiply both shares by Z^-1 to convert to affine form
        - run a safe arithmetic-to-boolean conversion algorithm
- */
+  */
 
   /* TODO: call arithmetic to boolean algorithm */
 
@@ -2780,6 +2782,20 @@ x:
 .balign 32
 .weak y
 y:
+  .zero 32
+
+/* shared key affine unmasked x-coordinate
+   only for testing */
+.balign 32
+.weak x_a
+x_a:
+  .zero 32
+
+/* shared key affine unmasked y-coordinate
+   only for testing */
+.balign 32
+.weak y_a
+y_a:
   .zero 32
 
 /* scalar mult mask value for x coordinate

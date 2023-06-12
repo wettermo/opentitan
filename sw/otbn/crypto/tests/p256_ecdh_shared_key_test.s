@@ -17,11 +17,23 @@
 
 p256_ecdh_shared_key_test:
 
+  /* init all-zero register */
+  bn.xor    w31, w31, w31
+
+  /* Load domain parameter.
+     w29 = dmem[p256_p] */
+  li        x2, 29
+  la        x4, p256_p
+  bn.lid    x2, 0(x4)
+
+  /* Set MOD to p */
+  bn.wsrw   0x00, w29
+
   /* Call scalar point multiplication routine for shared key generation in P-256 lib. */
   jal      x1, p256_ecdh_shared_key
 
   /* Arithmetical unmasking of the x coordinate (shared key).
-       dmem[x] <= dmem[x] + dmem[m_x] */
+       w0 <= dmem[x] + dmem[m_x] mod p */
 
   /* w3 <= dmem[x] */
   li        x3, 3
@@ -33,13 +45,42 @@ p256_ecdh_shared_key_test:
   la        x4, m_x
   bn.lid    x3, 0(x4)
 
-  /* w0 <= dmem[x] + dmem[m_x] */
+  /* w0 <= dmem[x] + dmem[m_x] mod p*/
   bn.addm    w0, w3, w4
 
-  /* dmem[x] <= w0 */
-  li       x2, 5
-  la       x3, x
-  bn.sid   x2, 0(x3)
+  /* Store unmasked x to DMEM for comparison with boolean masking
+       dmem[x_a] <= w0 */
+  li        x3, 0
+  la        x4, x_a
+  bn.sid    x3, 0(x4)
+
+  /* Arithmetic-to-boolean conversion*/
+
+  /* w11 <= dmem[x] */
+  li        x3, 11
+  la        x4, x
+  bn.lid    x3, 0(x4)
+
+  /* w19 <= dmem[m_x] */
+  li        x3, 19
+  la        x4, m_x
+  bn.lid    x3, 0(x4)
+
+  jal       x1, arithmetic_to_boolean
+
+  /* Unmask and compare values
+     after conversion */
+
+  /* w20 <= w20 ^ w19 = x' ^ r */
+  bn.xor    w20, w20, w19
+
+  /* w10 <= dmem[x_a] */
+  li        x3, 10
+  la        x4, x_a
+  bn.lid    x3, 0(x4)
+
+  /* w1 <= w10 - w20 */
+  bn.sub    w1, w10, w20
 
   ecall
 
@@ -101,4 +142,10 @@ y:
 .globl m_x
 .balign 32
 m_x:
+  .zero 32
+
+/* affine x-coordinate value before A2B */
+.globl x_a
+.balign 32
+x_a:
   .zero 32

@@ -3,6 +3,9 @@
 
 p256_arithmetic_to_boolean_test:
 
+  /* init all-zero register */
+  bn.xor    w31, w31, w31
+
   /* Load domain parameter.
      w29 = dmem[p256_p] */
   li        x2, 29
@@ -19,13 +22,20 @@ p256_arithmetic_to_boolean_test:
   la        x4, x
   bn.lid    x3, 0(x4)
 
-  /* w19 <= URND */
-  bn.wsrr   w19, 0x00
+  /* w19 <= URND mod p*/
+  bn.wsrr   w19, 0x02
+  bn.wsrr   w19, 0x02
+  bn.wsrr   w19, 0x02
+  bn.wsrr   w19, 0x02
+  bn.wsrr   w19, 0x02
+  bn.wsrr   w19, 0x02
+  bn.wsrr   w19, 0x02
+  bn.addm   w19, w19, w31
 
   /* Arithmetic masking */
 
   /* w11 = A <= w11 - w19 = x - r */
-  bn.sub    w11, w11, w19
+  bn.subm    w11, w11, w19
 
   /* Arithmetic to boolean conversion */
   jal       x1, arithmetic_to_boolean
