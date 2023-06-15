@@ -66,7 +66,7 @@ p256_ecdh_shared_key_test:
   la        x4, m_x
   bn.lid    x3, 0(x4)
 
-  jal       x1, arithmetic_to_boolean
+  jal       x1, arithmetic_to_boolean_mod
 
   /* Unmask and compare values
      after conversion */

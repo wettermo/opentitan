@@ -17,25 +17,30 @@ p256_arithmetic_to_boolean_test:
 
   /* Load values into WDRs */
 
-  /* w11 <= dmem[x] */
+  /* w11 <= dmem[x_l] */
   li        x3, 11
-  la        x4, x
+  la        x4, x_l
   bn.lid    x3, 0(x4)
 
-  /* w19 <= URND mod p*/
+  /* w12 <= dmem[x_u] */
+  li        x3, 12
+  la        x4, x_u
+  bn.lid    x3, 0(x4)
+
+  /* w18 <= URND
+     w19 <= URND (1 bit) */
+  bn.wsrr   w18, 0x02
   bn.wsrr   w19, 0x02
-  bn.wsrr   w19, 0x02
-  bn.wsrr   w19, 0x02
-  bn.wsrr   w19, 0x02
-  bn.wsrr   w19, 0x02
-  bn.wsrr   w19, 0x02
-  bn.wsrr   w19, 0x02
-  bn.addm   w19, w19, w31
+  bn.rshi   w19, w31, w19 >> 255
 
   /* Arithmetic masking */
 
-  /* w11 = A <= w11 - w19 = x - r */
-  bn.subm    w11, w11, w19
+  /* [w12,w11] = A <= [w12,w11] - [w19,w18] mod 2^257 = x - r mod 2^257
+     This may result in bits above 2^257, but these will be stripped off. */
+  bn.sub    w11, w11, w18
+  bn.subb   w12, w12, w19
+  bn.rshi   w12, w12, w31 >> 1
+  bn.rshi   w12, w31, w12 >> 255
 
   /* Arithmetic to boolean conversion */
   jal       x1, arithmetic_to_boolean
@@ -43,25 +48,45 @@ p256_arithmetic_to_boolean_test:
   /* Unmask and compare values
      after conversion */
 
-  /* w20 <= w20 ^ w19 = x' ^ r */
-  bn.xor    w20, w20, w19
+  /* w20 <= w20 ^ w18 = x' ^ r
+     w21 <= w21 ^ w19 = x' ^ r */
+  bn.xor    w20, w20, w18
+  bn.xor    w21, w21, w19
 
-  /* w10 <= dmem[x] */
-  li        x3, 10
-  la        x4, x
+  /* w11 <= dmem[x_l] */
+  li        x3, 11
+  la        x4, x_l
   bn.lid    x3, 0(x4)
 
-  /* w0 <= w10 - w20 */
-  bn.sub    w0, w10, w20
+  /* w12 <= dmem[x_u] */
+  li        x3, 12
+  la        x4, x_u
+  bn.lid    x3, 0(x4)
+
+  /* [w1,w0] <= [w12,w11] - [w21,w20] */
+  bn.sub    w0, w11, w20
+  bn.subb   w1, w12, w21
 
   ecall
 
 
 .data
 
-.globl x
+.globl x_u
 .balign 32
-x:
+x_u:
+  .word 0x00000001
+  .word 0x00000000
+  .word 0x00000000
+  .word 0x00000000
+  .word 0x00000000
+  .word 0x00000000
+  .word 0x00000000
+  .word 0x00000000
+
+.globl x_l
+.balign 32
+x_l:
   .word 0x2ab77ca0
   .word 0x8031ceb8
   .word 0xff3e1afa
@@ -69,4 +94,4 @@ x:
   .word 0x22fe027b
   .word 0x8a29dc16
   .word 0xf7109d54
-  .word 0x762c5d06
+  .word 0x162c5d06

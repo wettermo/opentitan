@@ -10,16 +10,16 @@
 .globl p256_isoncurve
 .globl p256_scalar_mult
 .globl p256_base_mult
-.globl p256_sign
-.globl p256_verify
-.globl p256_generate_k
-.globl p256_generate_random_key
-.globl p256_key_from_seed
 
 /* Exposed only for testing or SCA purposes. */
 .globl proj_add
 .globl mod_inv
+.globl mod_mul_256x256
 .globl mod_mul_320x128
+.globl p256_ecdh_shared_key
+.globl p256_scalar_mult_ecdh
+.globl arithmetic_to_boolean
+.globl arithmetic_to_boolean_mod
 
 .text
 
@@ -1029,10 +1029,12 @@ proj_double:
 
 
 /**
- * P-256 scalar point multiplication in affine space
+ * P-256 scalar point multiplication in affine -> projective space
  *
  * returns R = k*P = k*(x_p, y_p)
- *         with R, P being valid P-256 curve points in affine coordinates
+ *         with R being a valid P-256 curve point in projective
+ *              (old: affine) coordinates,
+ *              P being a valid curve point in affine space,
  *              k being a 256 bit scalar
  *
  * This routine performs scalar multiplication based on the group laws
@@ -1066,11 +1068,12 @@ proj_double:
  * @param[in]  w27: b, curve domain parameter
  * @param[in]  w31: all-zero
  * @param[in]  MOD: p, modulus, 2^256 > p > 2^255.
- * @param[out]  w11: x_r, affine x-coordinate of resulting point
- * @param[out]  w12: y_r, affine y-coordinate of resulting point
+ * @param[out]  w8: x_r, projective x-coordinate of resulting point
+ * @param[out]  w9: y_r, projective y-coordinate of resulting point
+ * @param[out]  w10: z_r, projective y-coordinate of resulting point
  *
  * Flags: When leaving this subroutine, the M, L and Z flags of FG0 depend on
- *        the computed affine y-coordinate.
+ *        the computed projective y-coordinate.
  *
  * clobbered registers: x2, x3, x10, w0 to w30
  * clobbered flag groups: FG0
@@ -1227,238 +1230,7 @@ scalar_mult_int:
 
   /* convert back to affine coordinates
      R = (x_a, y_a) = (w11, w12) */
-  jal       x1, proj_to_affine
-
-  ret
-
-
-/**
- * P-256 ECDSA signature generation
- *
- * returns the signature as the pair r, s with
- *         r = x_1  mod n
- *     and s = k^(-1)(msg + r*d)  mod n
- *         with x_1 being the affine x-coordinate of the curve point k*G,
- *                  where G is the curve's base point.
- *              k being a supplied secret random number,
- *              n being the order of the base point G of P-256,
- *              msg being the msg to be signed,
- *              d being the private key.
- *
- * This routine runs in constant time.
- *
- * Note: Some versions of the ECDSA spec suggest that msg must be reduced
- * modulo n (e.g. RFC 6979, section 2.4). However, for this implementation, it
- * is sufficient that msg < 2^256, because the message is multiplied with
- * k^(-1) mod n, and our Barrett multiplication implementation accepts any
- * operands a and b such that a * b < 2^256 * p and fully reduces the result.
- *
- * This routine assumes that the secret scalars d and k are provided in two
- * shares each (d0/d1 and k0/k1 respectively), where
- *   d = (d0 + d1) mod n
- *   k = (k0 + k1) mod n
- *
- * Each share is 320 bits, which gives us 64 bits of extra redundancy modulo n
- * (256 bits). This is a protection measure against side-channel attacks.
- *
- * For s = k^-1 * (r * d + msg), we compute a random nonzero masking scalar
- * alpha, and compute s as:
- *   s = ((k * alpha)^-1 * (r * (d * alpha) + alpha * msg)) mod n
- *
- * We choose alpha to be at most 128 bits, so the product with a 320b share
- * produces fits in the same 512-bit modular reduction routine that we use for
- * 256x256-bit multiplications. It should be safe to compute e.g. k * alpha =
- * (k0 * alpha + k1 * alpha) mod n, because alpha has enough randomness to mask
- * the true value of k.
- *
- * @param[in]  dmem[k0]:  first share of secret scalar (320 bits)
- * @param[in]  dmem[k1]:  second share of secret scalar (320 bits)
- * @param[in]  dmem[msg]: message to be signed (256 bits)
- * @param[in]  dmem[r]:   dmem buffer for r component of signature (256 bits)
- * @param[in]  dmem[s]:   dmem buffer for s component of signature (256 bits)
- * @param[in]  dmem[d0]:  first share of private key d (320 bits)
- * @param[in]  dmem[d1]:  second share of private key d (320 bits)
- *
- * Flags: When leaving this subroutine, the M, L and Z flags of FG0 depend on
- *        the computed affine y-coordinate.
- *
- * clobbered registers: x2, x3, x16 to x23, w0 to w26
- * clobbered flag groups: FG0
- */
-p256_sign:
-
-  /* init all-zero register */
-  bn.xor    w31, w31, w31
-
-  /* load first share of secret scalar k from dmem: w0,w1 = dmem[k0] */
-  la        x16, k0
-  li        x2, 0
-  bn.lid    x2, 0(x16++)
-  li        x2, 1
-  bn.lid    x2, 0(x16)
-
-  /* load second share of secret scalar k from dmem: w2,w3 = dmem[k1] */
-  la        x16, k1
-  li        x2, 2
-  bn.lid    x2, 0(x16++)
-  li        x2, 3
-  bn.lid    x2, 0(x16)
-
-  /* setup modulus n (curve order) and Barrett constant
-     MOD <= w29 <= n = dmem[p256_n]; w28 <= u_n = dmem[p256_u_n]  */
-  li        x2, 29
-  la        x3, p256_n
-  bn.lid    x2, 0(x3)
-  bn.wsrw   0, w29
-  li        x2, 28
-  la        x3, p256_u_n
-  bn.lid    x2, 0(x3)
-
-  /* scalar multiplication with base point
-     (x_1, y_1) = (w11, w12) <= k*G = w0*(dmem[p256_gx], dmem[p256_gy]) */
-  la        x21, p256_gx
-  la        x22, p256_gy
-  jal       x1, scalar_mult_int
-
-  /* setup modulus n (curve order) and Barrett constant
-     MOD <= w29 <= n = dmem[p256_n]; w28 <= u_n = dmem[p256_u_n]  */
-  li        x2, 29
-  la        x3, p256_n
-  bn.lid    x2, 0(x3)
-  bn.wsrw   0, w29
-  li        x2, 28
-  la        x3, p256_u_n
-  bn.lid    x2, 0(x3)
-
-  /* re-load first share of secret scalar k from dmem: w0,w1 = dmem[k0] */
-  la        x16, k0
-  li        x2, 0
-  bn.lid    x2, 0(x16++)
-  li        x2, 1
-  bn.lid    x2, 0(x16)
-
-  /* re-load second share of secret scalar k from dmem: w2,w3 = dmem[k1] */
-  la        x16, k1
-  li        x2, 2
-  bn.lid    x2, 0(x16++)
-  li        x2, 3
-  bn.lid    x2, 0(x16)
-
-  /* Generate a random 127-bit number.
-       w4 <= URND()[255:129] */
-  bn.wsrr  w4, 0x2 /* URND */
-  bn.rshi  w4, w31, w4 >> 129
-
-  /* Add 1 to get a 128-bit nonzero scalar for masking.
-       w4 <= w4 + 1 = alpha */
-  bn.addi  w4, w4, 1
-
-  /* w0 <= ([w0,w1] * w4) mod n = (k0 * alpha) mod n */
-  bn.mov    w24, w0
-  bn.mov    w25, w1
-  bn.mov    w26, w4
-  jal       x1, mod_mul_320x128
-  bn.mov    w0, w19
-
-  /* w19 <= ([w2,w3] * w26) mod n = (k1 * alpha) mod n */
-  bn.mov    w24, w2
-  bn.mov    w25, w3
-  jal       x1, mod_mul_320x128
-
-  /* w0 <= (w0+w19) mod n = (k * alpha) mod n */
-  bn.addm   w0, w0, w19
-
-  /* w1 <= w0^-1 mod n = (k * alpha)^-1 mod n */
-  jal       x1, mod_inv
-
-  /* Load first share of secret key d from dmem.
-       w2,w3 = dmem[d0] */
-  la        x16, d0
-  li        x2, 2
-  bn.lid    x2, 0(x16++)
-  li        x2, 3
-  bn.lid    x2, 0(x16)
-
-  /* Load second share of secret key d from dmem.
-       w5,w6 = dmem[d1] */
-  la        x16, d1
-  li        x2, 5
-  bn.lid    x2, 0(x16++)
-  li        x2, 6
-  bn.lid    x2, 0(x16)
-
-  /* w0 <= ([w2,w3] * w4) mod n = (d0 * alpha) mod n */
-  bn.mov    w24, w2
-  bn.mov    w25, w3
-  bn.mov    w26, w4
-  jal       x1, mod_mul_320x128
-  bn.mov    w0, w19
-
-  /* w19 <= ([w5,w6] * w4) mod n = (d1 * alpha) mod n */
-  bn.mov    w24, w5
-  bn.mov    w25, w6
-  bn.mov    w26, w4
-  jal       x1, mod_mul_320x128
-
-  /* w0 <= (w0+w19) mod n = (d * alpha) mod n */
-  bn.addm   w0, w0, w19
-
-  /* Compare to 0.
-     FG0.Z <= (w0 =? w31) = ((d * alpha) mod n =? 0) */
-  bn.cmp    w0, w31
-
-  /* Trigger a fault if FG0.Z is set, aborting the computation.
-
-     Since alpha is nonzero mod n, (d * alpha) mod n = 0 means d is zero mod n,
-     which violates ECDSA private key requirements. This could technically be
-     triggered by an unlucky key manager seed, but the probability is so low (~1/n)
-     that it more likely indicates a fault attack. */
-  jal       x1, trigger_fault_if_fg0_z
-
-  /* w24 = r <= w11  mod n */
-  bn.addm   w24, w11, w31
-
-  /* Store r of signature in dmem.
-       dmem[r] <= r = w24 */
-  la        x19, r
-  li        x2, 24
-  bn.sid    x2, 0(x19)
-
-  /* w19 <= (w24 * w0) mod n = (r * d * alpha) mod n */
-  bn.mov    w25, w0
-  jal       x1, mod_mul_256x256
-
-  /* w0 <= (w1 * w19) mod n = ((k * alpha)^-1 * (r * d * alpha)) mod n
-                            = (k^-1 * r * d) mod n */
-  bn.mov    w24, w1
-  bn.mov    w25, w19
-  jal       x1, mod_mul_256x256
-  bn.mov    w0, w19
-
-  /* Load message from dmem:
-       w24 = msg <= dmem[msg] */
-  la        x18, msg
-  li        x2, 24
-  bn.lid    x2, 0(x18)
-
-  /* w19 = (w24 * w4) mod n = <= (msg * alpha)  mod n */
-  bn.mov    w25, w4
-  jal       x1, mod_mul_256x256
-
-  /* w19 = (w1 * w19) mod n = ((k * alpha)^-1 * (msg * alpha)) mod n
-                            = (k^-1 * msg) mod n */
-  bn.mov    w24, w1
-  bn.mov    w25, w19
-  jal       x1, mod_mul_256x256
-
-  /* w0 = (w0 + w19) mod n = (k^-1*r*d + k^-1*msg) mod n = s */
-  bn.addm   w0, w0, w19
-
-  /* Store s of signature in dmem.
-       dmem[s] <= s = w0 */
-  la        x20, s
-  li        x2, 0
-  bn.sid    x2, 0(x20)
+  /* jal       x1, proj_to_affine */
 
   ret
 
@@ -1518,6 +1290,10 @@ p256_base_mult:
   la        x21, p256_gx
   la        x22, p256_gy
   jal       x1, scalar_mult_int
+
+  /* convert back to affine coordinates
+     R = (x_a, y_a) = (w11, w12) */
+  jal       x1, proj_to_affine
 
   /* store result (affine coordinates) in dmem
      dmem[x] <= x_a = w11
@@ -1666,250 +1442,12 @@ mod_inv_var:
 
   ret
 
-
-/**
- * P-256 ECDSA signature verification
- *
- * returns the affine x-coordinate of
- *         (x1, y1) = u1*G + u2*Q
- *         with u1 = z*s^-1 mod n  and  u2 = r*s^-1 mod n
- *         with G being the curve's base point,
- *              z being the message
- *              r, s being the signature
- *              Q being the public key.
- *
- * The routine computes the x1 coordinate and places it in dmem. x1 will be
- * reduced (mod n), however, the final comparison has to be performed on the
- * host side. The signature is valid if x1 == r.
- * This routine runs in variable time.
- *
- * @param[in]  dmem[msg]: message to be verified (256 bits)
- * @param[in]  dmem[r]:   r component of signature (256 bits)
- * @param[in]  dmem[s]:   s component of signature (256 bits)
- * @param[in]  dmem[x]:   affine x-coordinate of public key (256 bits)
- * @param[in]  dmem[y]:   affine y-coordinate of public key (256 bits)
- * @param[out] dmem[x_r]: dmem buffer for reduced affine x_r-coordinate (x_1)
- *
- * Flags: Flags have no meaning beyond the scope of this subroutine.
- *
- * clobbered registers: x2, x3, x13, x14, x17 to x24, w0 to w25
- * clobbered flag groups: FG0
- */
-p256_verify:
-
-  /* init all-zero register */
-  bn.xor    w31, w31, w31
-
-  /* load domain parameter b from dmem
-     w27 <= b = dmem[p256_b] */
-  li        x2, 27
-  la        x3, p256_b
-  bn.lid    x2, 0(x3)
-
-  /* load r of signature from dmem: w24 = r = dmem[r] */
-  la        x19, r
-  li        x2, 11
-  bn.lid    x2, 0(x19)
-
-  /* setup modulus n (curve order) and Barrett constant
-     MOD <= w29 <= n = dmem[p256_n]; w28 <= u_n = dmem[p256_u_n]  */
-  li        x2, 29
-  la        x3, p256_n
-  bn.lid    x2, 0(x3)
-  bn.wsrw   0, w29
-  li        x2, 28
-  la        x3, p256_u_n
-  bn.lid    x2, 0(x3)
-
-  /* load s of signature from dmem: w0 = s = dmem[s] */
-  la        x20, s
-  bn.lid    x0, 0(x20)
-
-  /* goto 'fail' if w0 == w31 <=> s == 0 */
-  bn.cmp    w0, w31
-  csrrs     x2, 0x7c0, x0
-  andi      x2, x2, 8
-  bne       x2, x0, fail
-
-  /* goto 'fail' if w0 >= w29 <=> s >= n */
-  bn.cmp    w0, w29
-  csrrs     x2, 0x7c0, x0
-  andi      x2, x2, 1
-  beq       x2, x0, fail
-
-  /* w1 = s^-1  mod n */
-  jal       x1, mod_inv_var
-
-  /* load r of signature from dmem: w24 = r = dmem[r] */
-  la        x19, r
-  li        x2,  24
-  bn.lid    x2, 0(x19)
-
-  /* goto 'fail' if w24 == w31 <=> r == 0 */
-  bn.cmp    w24, w31
-  csrrs     x2, 0x7c0, x0
-  andi      x2, x2, 8
-  bne       x2, x0, fail
-
-  /* goto 'fail' if w0 >= w29 <=> r >= n */
-  bn.cmp    w24, w29
-  csrrs     x2, 0x7c0, x0
-  andi      x2, x2, 1
-  beq       x2, x0, fail
-
-  /* w25 = s^-1 = w1 */
-  bn.mov    w25, w1
-
-  /* u2 = w0 = w19 <= w24*w25 = r*s^-1 mod n */
-  jal       x1, mod_mul_256x256
-  bn.mov    w0, w19
-
-  /* load message, w24 = msg = dmem[msg] */
-  la        x18, msg
-  li        x2, 24
-  bn.lid    x2, 0(x18)
-
-  /* u1 = w1 = w19 <= w24*w25 = w24*w1 = msg*s^-1 mod n */
-  bn.mov    w25, w1
-  jal       x1, mod_mul_256x256
-  bn.mov    w1, w19
-
-  /* setup modulus p and Barrett constant */
-  li        x2, 29
-  la        x3, p256_p
-  bn.lid    x2, 0(x3)
-  bn.wsrw   0, w29
-  li        x2, 28
-  la        x3, p256_u_p
-  bn.lid    x2, 0(x3)
-
-  /* load public key Q from dmem and use in projective form (set z to 1)
-     Q = (w11, w12, w13) = (dmem[x], dmem[y], 1) */
-  li        x2, 11
-  la        x21, x
-  bn.lid    x2++, 0(x21)
-  la        x22, y
-  bn.lid    x2, 0(x22)
-  bn.addi   w13, w31, 1
-
-  /* load base point G and use in projective form (set z to 1)
-     G = (w8, w9, w10) = (x_g, y_g, 1) */
-  li        x13, 8
-  la        x23, p256_gx
-  bn.lid    x13, 0(x23)
-  li        x14, 9
-  la        x24, p256_gy
-  bn.lid    x14, 0(x24)
-  bn.addi   w10, w31, 1
-
-  /* The rest of the routine implements a variable time double-and-add
-     algorithm. For the signature verification we need to compute the point
-     C = (x1, y1) = u_1*G + u_2*Q. This can be done in a single
-     double-and-add routine by using Shamir's Trick. */
-
-  /* G+Q = (w3,w4,w5) = (w11,w12,w13) = (w8,w9,w10) (+) (w11,w12,w13) */
-  jal       x1, proj_add
-  bn.mov    w3, w11
-  bn.mov    w4, w12
-  bn.mov    w5, w13
-
-  /* w2 = u_2 & u_0 = w0 & w1*/
-  bn.and    w2, w0, w1
-
-  /* init double and add algorithm with (0, 1, 0) */
-  bn.mov    w11, w31
-  bn.addi   w12, w31, 1
-  bn.mov    w13, w31
-
-  /* main loop with dicreasing index i (i=255 downto 0) */
-  loopi     256, 31
-
-    /* always double: C = (w11,w12,w13) <= 2 (*) C = 2 (*) (w11,w12,w13) */
-    bn.mov    w8, w11
-    bn.mov    w9, w12
-    bn.mov    w10, w13
-    jal       x1, proj_add
-
-    /* if either  u_1[i] == 0 or u_2[i] == 0 jump to 'no_both' */
-    bn.add    w2, w2, w2
-    csrrs     x2, 0x7c0, x0
-    andi      x2, x2, 1
-    beq       x2, x0, no_both
-
-    /* both bits at current index (u1[i] and u2[i]) are set:
-       do C <= C + (P + Q) and jump to end */
-    bn.mov    w8, w3
-    bn.mov    w9, w4
-    bn.mov    w10, w5
-    jal       x1, proj_add
-    jal       x0, no_q
-
-    /* either u1[i] or u2[i] is set, but not both */
-    no_both:
-
-    /* if u2[i] is not set jump to 'no_g' */
-    bn.add    w6, w0, w0
-    csrrs     x2, 0x7c0, x0
-    andi      x2, x2, 1
-    beq       x2, x0, no_g
-
-    /* u2[i] is set: do C <= C + Q */
-    bn.lid    x13, 0(x21)
-    bn.lid    x14, 0(x22)
-    bn.addi   w10, w31, 1
-    jal       x1, proj_add
-
-    no_g:
-    /* if u1[i] is not set jump to 'no_q' */
-    bn.add    w6, w1, w1
-    csrrs     x2, 0x7c0, x0
-    andi      x2, x2, 1
-    beq       x2, x0, no_q
-
-    /* load base point x-coordinate
-      w8 <= g_x = dmem [p256_gx]; w9 <= g_y = dmem[p256_gy] */
-    bn.lid    x13, 0(x23)
-    bn.lid    x14, 0(x24)
-
-    /* u1[i] is set: do C <= C + G */
-    bn.addi   w10, w31, 1
-    jal       x1, proj_add
-
-    no_q:
-    /* left shift w0 and w1 to decrease index */
-    bn.add    w0, w0, w0
-    bn.add    w1, w1, w1
-
-  /* compute inverse of z-coordinate: w1 = z_c^-1  mod p */
-  bn.mov    w0, w13
-  jal       x1, mod_inv_var
-
-  /* convert x-coordinate of C back to affine: x1 = x_c * z_c^-1  mod p */
-  bn.mov    w24, w1
-  bn.mov    w25, w11
-  jal       x1, mod_mul_256x256
-
-  /* final reduction: w24 = x1 <= x1 mod n */
-  la        x3, p256_n
-  bn.lid    x0, 0(x3)
-  bn.wsrw   0, w0
-  bn.subm   w24, w19, w31
-
-  fail:
-  /* store affine x-coordinate in dmem: dmem[x_r] = w24 = x_r */
-  la        x17, x_r
-  li        x2, 24
-  bn.sid    x2, 0(x17)
-
-  ret
-
-
 /**
  * Externally callable wrapper for P-256 scalar point multiplication
  *
- * returns R = k*P = k*(x_p, y_p, z_p)
- *         with R, P being valid P-256 curve points in projective form,
- *              k being a 256 bit scalar.
+ * returns R = k*P = k*(x_am, y_am)
+ *         with R, P being valid arithmetically masked P-256 curve points
+ *              in affine form, k being a 256 bit scalar.
  *
  * This routine assumes that the scalar k is provided in two shares, k0 and k1,
  * where:
@@ -1920,8 +1458,12 @@ p256_verify:
  *
  * @param[in]      dmem[k0]:  first share of scalar k (256 bits)
  * @param[in]      dmem[k1]:  second share of scalar k (256 bits)
- * @param[in,out]  dmem[x]:   affine x-coordinate in dmem
- * @param[in,out]  dmem[y]:   affine y-coordinate in dmem
+ * @param[in]      dmem[x]:   affine x-coordinate in dmem
+ * @param[in]      dmem[y]:   affine y-coordinate in dmem
+ * @param[out]     dmem[x]:   affine arithmetically masked x-coordinate in dmem
+ * @param[out]     dmem[y]:   affine arithmetically masked y-coordinate in dmem
+ * @param[out]     dmem[m_x]:   arithmetic mask for x coordinate in dmem
+ * @param[out]     dmem[m_y]:   arithmetic mask for y coordinate in dmem
  *
  * Flags: When leaving this subroutine, the M, L and Z flags of FG0 depend on
  *        the computed affine y-coordinate.
@@ -1929,7 +1471,7 @@ p256_verify:
  * clobbered registers: x2, x3, x16, x17, x21, x22, w0 to w25
  * clobbered flag groups: FG0
  */
-p256_scalar_mult:
+p256_scalar_mult_ecdh:
 
   /* init all-zero register */
   bn.xor    w31, w31, w31
@@ -1942,7 +1484,7 @@ p256_scalar_mult:
   li        x2, 1
   bn.lid    x2, 0(x16)
 
-  /* Load second share of secret key d from dmem.
+  /* Load second share of secret key k from dmem.
        w2,w3 = dmem[k1] */
   la        x16, k1
   li        x2, 2
@@ -1950,443 +1492,371 @@ p256_scalar_mult:
   li        x2, 3
   bn.lid    x2, 0(x16)
 
-  /* call internal scalar multiplication routine
-     R = (x_a, y_a) = (w11, w12) <= k*P = w0*P */
+  /* Call internal scalar multiplication routine.
+     Returns point in projective coordinates.
+     R = (x, y, z) = (w8, w9, w10) <= k*P = w0*P */
   la        x21, x
   la        x22, y
   jal       x1, scalar_mult_int
 
-  /* store result (affine coordinates) in dmem
+  /* Arithmetic masking:
+   1. Generate two random masks (for x and y)
+   2. Subtract masks from projective x and y coordinate
+      (x, y, z) -> ((x - m) mod p,
+                    (y - m) mod p,
+                     z)
+   3. Convert masked curve point back to affine
+      form.
+   4. Multiply masks with z^-1 for use in
+      affine space. */
+
+  /* Fetch two fresh random numbers as masks.
+       w2 <= URND()
+       w3 <= URND() */
+  bn.wsrr   w2, 0x2 /* URND */
+  bn.wsrr   w3, 0x2 /* URND */
+  /*bn.addm   w2, w2, w31 /* mod p */
+  /*bn.addm   w3, w3, w31 /* mod p */
+
+  /* Subtract random masks to x and y coordinate of
+     projective point.
+     The addition has to be done within the underlying
+     finite field -> mod p.
+     w8 = (w8 - w2) mod p
+     w9 = (w9 - w2) mod p */
+  bn.subm    w8, w8, w2
+  bn.subm    w9, w9, w3
+
+  /* Convert masked results back to affine coordinates.
+     R = (x_a, y_a) = (w11, w12) */
+  jal       x1, proj_to_affine
+
+  /* Store result (masked affine coordinates) in dmem.
      dmem[x] <= x_a = w11
      dmem[y] <= y_a = w12 */
   li        x2, 11
   bn.sid    x2++, 0(x21)
   bn.sid    x2, 0(x22)
 
-  ret
+  /* Get modular inverse z^-1 of projective z coordinate
+     and multiply the random masks with z^-1 to
+     also convert them into affine space. */
 
-/**
- * Generate a nonzero random value in the scalar field.
- *
- * Returns t, a random value that is nonzero mod n, in shares.
- *
- * This follows a modified version of the method in FIPS 186-4 sections B.4.1
- * and B.5.1 for generation of secret scalar values d and k. The computation
- * in FIPS 186-4 is:
- *   seed = RBG(seedlen) // seedlen >= 320
- *   return (seed mod (n-1)) + 1
- *
- * The important features here are that (a) the seed is at least 64 bits longer
- * than n in order to minimize bias after the reduction and (b) the resulting
- * scalar is guaranteed to be nonzero.
- *
- * We deviate from FIPS a little bit here because for side-channel protection,
- * we do not want to fully reduce the seed modulo (n-1) or combine the shares.
- * Instead, we do the following:
- *   seed0 = RBG(320)
- *   seed1 = RBG(320)
- *   x = URND(127) + 1 // random value for masking
- *   if (seed0 * x + seed1 * x) mod n == 0:
- *     retry
- *   return seed0, seed1
- *
- * Essentially, we get two independent seeds and interpret these as additive
- * shares of the scalar t = (seed0 + seed1) mod n. Then, we need to ensure t is
- * nonzero. Multiplying each share with a random masking parameter allows us to
- * safely add them, and then check if this result is 0; if it is, then t must
- * be 0 mod n and we need to retry.
- *
- * Flags: Flags have no meaning beyond the scope of this subroutine.
- *
- * @param[in]  w31:  all-zero
- * @param[out] w15,w16:  first share of secret scalar t (320 bits)
- * @param[out] w17,w18:  second share of secret scalar t (320 bits)
- *
- * clobbered registers: x2, x3, x20, w12 to w29
- * clobbered flag groups: FG0
- */
-p256_random_scalar:
-  /* Load the curve order n.
-     w29 <= dmem[p256_n] = n */
-  li        x2, 29
-  la        x3, p256_n
-  bn.lid    x2, 0(x3)
-
-  /* Copy n into the MOD register. */
-  bn.wsrw   0, w29
-
-  /* Load Barrett constant for n.
-     w28 <= u_n = dmem[p256_u_n]  */
+  /* Load barrett constant as input for
+     mod_mul_256x256.
+     w28 = dmem[p256_u_p] */
   li        x2, 28
-  la        x3, p256_u_n
-  bn.lid    x2, 0(x3)
+  la        x4, p256_u_p
+  bn.lid    x2, 0(x4)
 
-  random_scalar_retry:
-  /* Obtain 768 bits of randomness from RND. */
-  bn.wsrr   w15, 0x1 /* RND */
-  bn.wsrr   w16, 0x1 /* RND */
-  bn.wsrr   w17, 0x1 /* RND */
+  /* Get field modulus p.
+     w29 <= MOD() */
+  bn.wsrr   w29, 0x00 /* MOD */
 
-  /* XOR with bits from URND, just in case there's any vulnerability in EDN
-     that lets the attacker recover bits before they reach OTBN. */
-  bn.wsrr   w20, 0x2 /* URND */
-  bn.xor    w16, w16, w20
-  bn.wsrr   w20, 0x2 /* URND */
-  bn.xor    w17, w17, w20
-  bn.wsrr   w20, 0x2 /* URND */
-  bn.xor    w18, w18, w20
+  /* Move z^-1 and x coordinate mask to
+     mod_mul_256x256 input WDRs.
+     z^-1 is still stored in w14 from previous
+     proj_to_affine call.
+     w25 <= w14 = z^-1
+     w24 <= w2 = m_x */
+  bn.mov    w25, w14
+  bn.mov    w24, w2
 
-  /* Shift bits to get 320-bit seeds.
-     w18 <= w16[255:192]
-     w16 <= w16[63:0] */
-  bn.rshi   w18, w31, w16 >> 192
-  bn.rshi   w20, w16, w31 >> 64
-  bn.rshi   w16, w20, w31 >> 192
+  /* Compute modular multiplication of m_x and z^-1.
+     w19 = w24 * w25 mod w29 = m_x * z^-1 mod p */
+  jal       x1, mod_mul_256x256
 
-  /* Generate a random masking parameter.
-     w14 <= URND(127) + 1 = x */
-  bn.wsrr   w14, 0x2 /* URND */
-  bn.addi   w14, w14, 1
+  /* Store "affine" mask to DMEM.
+     dmem[m_x] <= w19 = m_x * z^-1 mod p */
+  li        x2, 19
+  la        x4, m_x
+  bn.sid    x2, 0(x4)
 
-  /* w12 <= ([w15,w16] * w14) mod n = (seed0 * x) mod n */
-  bn.mov    w24, w15
-  bn.mov    w25, w16
-  bn.mov    w26, w14
-  jal       x1, mod_mul_320x128
-  bn.mov    w12, w19
+  /* Move y coordinate mask to
+     mod_mul_256x256 input WDR.
+     w24 <= w2 = m_y */
+  bn.mov    w24, w3
 
-  /* w13 <= ([w17,w18] * w14) mod n = (seed1 * x) mod n */
-  bn.mov    w24, w17
-  bn.mov    w25, w18
-  bn.mov    w26, w14
-  jal       x1, mod_mul_320x128
-  bn.mov    w13, w19
+  /* Compute modular multiplication of m_y and z^-1.
+     w19 = w24 * w25 mod w29 = m_y * z^-1 mod p */
+  jal       x1, mod_mul_256x256
 
-  /* w12 <= (w12 + w13) mod n = ((seed0 + seed1) * x) mod n */
-  bn.addm   w12, w12, w13
-
-  /* Compare to 0.
-     FG0.Z <= (w12 =? w31) = ((seed0 + seed1) mod n =? 0) */
-  bn.cmp    w12, w31
-
-  /* Read the FG0.Z flag (position 3).
-     x2 <= 8 if FG0.Z else 0 */
-  csrrw     x2, 0x7c0, x0
-  andi      x2, x2, 8
-
-  /* Retry if x2 != 0. */
-  bne       x2, x0, random_scalar_retry
-
-  /* If we get here, then (seed0 + seed1) mod n is nonzero mod n; return. */
+  /* Store "affine" mask to DMEM.
+     dmem[m_y] <= w19 = m_y * z^-1 mod p */
+  li        x2, 19
+  la        x4, m_y
+  bn.sid    x2, 0(x4)
 
   ret
 
 /**
- * Generate the secret key d from a random seed.
- *
- * Flags: Flags have no meaning beyond the scope of this subroutine.
- *
- * @param[out]  dmem[d0]:  first share of private key d
- * @param[out]  dmem[d1]:  second share of private key d
- *
- * clobbered registers: x2, x3, x20, w20, w21, w29
- * clobbered flag groups: FG0
+ * Function to test ecdh shared key generation.
  */
-p256_generate_random_key:
-  /* Init all-zero register. */
-  bn.xor    w31, w31, w31
+p256_ecdh_shared_key:
+  /* Generate shared key d*Q.
+       dmem[x] <= (d*Q).x
+       dmem[y] <= (d*Q).y */
+  jal      x1, p256_scalar_mult_ecdh
 
-  /* Generate a random scalar in two 320-bit shares.
-       w15, w16 <= d0
-       w17, w18 <= d1 */
-  jal  x1, p256_random_scalar
-
-  /* Write first share to DMEM.
-       dmem[d0] <= w15, w16 = d0 */
-  la        x20, d0
-  li        x2, 15
-  bn.sid    x2, 0(x20++)
-  li        x2, 16
-  bn.sid    x2, 0(x20)
-
-  /* Write second share to DMEM.
-       dmem[d1] <= w15, w16 = d0 */
-  la        x20, d1
-  li        x2, 17
-  bn.sid    x2, 0(x20++)
-  li        x2, 18
-  bn.sid    x2, 0(x20)
-
-  ret
-
-/**
- * Generate the secret scalar k from a random seed.
- *
- * Flags: Flags have no meaning beyond the scope of this subroutine.
- *
- * @param[out]  dmem[k0]:  first share of secret scalar k
- * @param[out]  dmem[k1]:  second share of secret scalar k
- *
- * clobbered registers: x2, x3, x20, w20, w21, w29
- * clobbered flag groups: FG0
- */
-p256_generate_k:
-  /* Init all-zero register. */
-  bn.xor    w31, w31, w31
-
-  /* Generate a random scalar in two 320-bit shares.
-       w15, w16 <= k0
-       w17, w18 <= k1 */
-  jal  x1, p256_random_scalar
-
-  /* Write first share to DMEM.
-       dmem[k0] <= w15, w16 = k0 */
-  la        x20, k0
-  li        x2, 15
-  bn.sid    x2, 0(x20++)
-  li        x2, 16
-  bn.sid    x2, 0(x20)
-
-  /* Write second share to DMEM.
-       dmem[k1] <= w15, w16 = k0 */
-  la        x20, k1
-  li        x2, 17
-  bn.sid    x2, 0(x20++)
-  li        x2, 18
-  bn.sid    x2, 0(x20)
-
-  ret
-
-/**
- * Convert boolean shares to arithmetic ones using Goubin's algorithm.
- *
- * Returns x0, x1 such that (s0 ^ s1) = (x0 + x1) mod 2^321.
- *
- * The input consists of two 320-bit shares, s0 and s1. Bits at position 320
- * and above in the input shares will be ignored. We compute the result mod
- * 2^321 so that the high bit of x0 will reveal the carry modulo 2^320.
- *
- * We then use Goubin's boolean-to-arithmetic masking algorithm to switch from
- * this boolean masking scheme to an arithmetic one without ever unmasking the
- * seed. See Algorithm 1 here:
- * https://link.springer.com/content/pdf/10.1007/3-540-44709-1_2.pdf
- *
- * The algorithm is reproduced here for reference:
- *   Input:
- *     s0, s1: k-bit shares such that x = s0 ^ s1
- *     gamma: random k-bit number
- *   Output: x0, k-bit number such that x = (x0 + s1) mod 2^k
- *   Pseudocode:
- *     T := ((s0 ^ gamma) - gamma) mod 2^k
- *     T2 := T ^ s0
- *     G := gamma ^ s1
- *     A := ((s0 ^ G) - G) mod 2^k
- *     return x0 := (A ^ T2)
- *
- * The output x1 is always (s1 mod 2^320).
- *
- * This routine runs in constant time.
- *
- * Flags: Flags have no meaning beyond the scope of this subroutine.
- *
- * @param[in]  [w21, w20]: s0, first share of seed (320 bits)
- * @param[in]  [w23, w22]: s1, second share of seed (320 bits)
- * @param[in]         w31: all-zero
- * @param[out] [w21, w20]: result x0 (321 bits)
- * @param[out] [w23, w22]: result x1 (320 bits)
- *
- * clobbered registers: w1 to w5, w20 to w23
- * clobbered flag groups: FG0
- */
-boolean_to_arithmetic:
-  /* Mask out excess bits from seed shares.
-       [w21, w20] <= s0 mod 2^320
-       [w23, w22] <= s1 mod 2^320 = x1 */
-  bn.rshi   w21, w21, w31 >> 64
-  bn.rshi   w21, w31, w21 >> 192
-  bn.rshi   w23, w23, w31 >> 64
-  bn.rshi   w23, w31, w23 >> 192
-
-  /* Fetch 321 bits of randomness from URND.
-       [w2, w1] <= gamma */
-  bn.wsrr   w1, 2
-  bn.wsrr   w2, 2
-  bn.rshi   w2, w31, w2 >> 191
-
-  /* [w4, w3] <= [w21, w20] ^ [w2, w1] = s0 ^ gamma */
-  bn.xor    w3, w20, w1
-  bn.xor    w4, w21, w2
-
-  /* Subtract gamma. This may result in bits above 2^321, but these will be
-     stripped off in the next step.
-       [w4, w3] <= [w4, w3] - [w2, w1] = ((s0 ^ gamma) - gamma) mod 2^512 */
-  bn.sub    w3, w3, w1
-  bn.subb   w4, w4, w2
-
-  /* Truncate subtraction result to 321 bits.
-       [w4, w3] <= [w4, w3] mod 2^321 = T */
-  bn.rshi   w4, w4, w31 >> 65
-  bn.rshi   w4, w31, w4 >> 191
-
-  /* [w4, w3] <= [w4, w3] ^ [w21, w20] = T2 */
-  bn.xor    w3, w3, w20
-  bn.xor    w4, w4, w21
-
-  /* [w2, w1] <= [w2, w1] ^ [w23, w22] = gamma ^ s1 = G */
-  bn.xor    w1, w1, w22
-  bn.xor    w2, w2, w23
-
-  /* [w21, w20] <= [w21, w20] ^ [w2, w1] = s0 ^ G */
-  bn.xor    w20, w20, w1
-  bn.xor    w21, w21, w2
-
-  /* [w21, w20] <= [w21, w20] - [w2, w1] = ((s0 ^ G) - G) mod 2^512 */
-  bn.sub    w20, w20, w1
-  bn.subb   w21, w21, w2
-
-  /* [w21, w20] <= [w21, w20] mod 2^321 = A */
-  bn.rshi   w21, w21, w31 >> 65
-  bn.rshi   w21, w31, w21 >> 191
-
-  /* [w21, w20] <= [w21, w20] ^ [w4, w3] = A ^ T2 = x0 */
-  bn.xor    w20, w20, w3
-  bn.xor    w21, w21, w4
-
-  ret
-
-/**
- * P-256 ECDSA secret key generation.
- *
- * Returns the secret key d in two 320-bit shares d0 and d1, such that:
- *    d = (d0 + d1) mod n
- * ...where n is the curve order.
- *
- * This implementation follows FIPS 186-4 section B.4.1, where we
- * generate d using N+64 random bits (320 bits in this case) as a seed. But
- * while FIPS computes d = (seed mod (n-1)) + 1 to ensure a nonzero key, we
- * instead just compute d = seed mod n. The caller MUST ensure that if this
- * routine is used, then other routines that use d (e.g. signing, public key
- * generation) are checking if d is 0.
- *
- * Most complexity in this routine comes from masking. The input seed is
- * provided in two 320-bit shares, seed0 and seed1, such that:
- *   seed = seed0 ^ seed1
- * Bits at position 320 and above in the input shares will be ignored.
- *
- * We then use Goubin's boolean-to-arithmetic masking algorithm to switch from
- * this boolean masking scheme to an arithmetic one without ever unmasking the
- * seed. See Algorithm 1 here:
- * https://link.springer.com/content/pdf/10.1007/3-540-44709-1_2.pdf
- *
- * For a Coq proof of the correctness of the basic computational logic here
- * see:
- *   https://gist.github.com/jadephilipoom/24f44c59cbe59327e2f753867564fa28#file-masked_reduce-v-L226
- *
- * The proof does not cover leakage properties; it mostly just shows that this
- * logic correctly computes (seed mod n) and the carry-handling works.
- *
- * This routine runs in constant time.
- *
- * Flags: Flags have no meaning beyond the scope of this subroutine.
- *
- * @param[in]  [w21, w20]: seed0, first share of seed (320 bits)
- * @param[in]  [w23, w22]: seed1, second share of seed (320 bits)
- * @param[in]         w31: all-zero
- * @param[out] [w21, w20]: d0, first share of private key d (320 bits)
- * @param[out] [w23, w22]: d1, second share of private key d (320 bits)
- *
- * clobbered registers: x2, x3, w1 to w4, w20 to w29
- * clobbered flag groups: FG0
- */
-p256_key_from_seed:
-  /* Convert from a boolean to an arithmetic mask using Goubin's algorithm.
-       [w21, w20] <= ((seed0 ^ seed1) - seed1) mod 2^321 = x0 */
-  jal       x1, boolean_to_arithmetic
-
-  /* At this point, we have arithmetic shares modulo 2^321:
-       [w21, w20] : x0
-       [w23, w22] : x1
-
-     We know that x1=seed1, and seed and x1 are at most 320 bits. Therefore,
-     the highest bit of x0 holds a carry bit modulo 2^320:
-       x0 = (seed - x1) mod 2^321
-       x0 = (seed - x1) mod 2^320 + (if (x1 <= seed) then 0 else 2^320)
-
-     The carry bit then allows us to replace (mod 2^321) with a conditional
-     statement:
-       seed = (x0 mod 2^320) + x1 - (x0[320] << 320)
-
-     Note that the carry bit is not very sensitive from a side channel
-     perspective; x1 <= seed has some bias related to the highest bit of the
-     seed, but since the seed is 64 bits larger than n, this single-bit noisy
-     leakage should not be significant.
-
-     From here, we want to convert to shares modulo (n * 2^64) -- these shares
-     will be equivalent to the seed modulo n but still retain 64 bits of extra
-     masking. We compute the new shares as follows:
-       c = (x0[320] << 320) mod (n << 64)
-       d0 = ((x0 mod 2^320) - c) mod (n << 64))
-       d1 = x1 mod (n << 64)
-
-       d = seed mod n = (d0 + d1) mod n
+  /* TODO: `p256_scalar_mult` and the code below briefly handle the shared key
+     in unmasked form. The best way to fixing this is likely:
+       - modify scalar_mult_int to return projective coordinates
+       - get additive arithmetic mask for x before converting it to affine
+       - multiply both shares by Z^-1 to convert to affine form
+       - run a safe arithmetic-to-boolean conversion algorithm
   */
 
-  /* Load curve order n from DMEM.
-       w29 <= dmem[p256_n] = n */
-  li        x2, 29
-  la        x3, p256_n
-  bn.lid    x2, 0(x3)
+  /* TODO: call arithmetic to boolean algorithm */
 
-  /* Compute (n << 64).
-       [w29,w28] <= w29 << 64 = n << 64 */
-  bn.rshi   w28, w29, w31 >> 192
-  bn.rshi   w29, w31, w29 >> 192
+  ret
 
-  /* [w25,w24] <= (x1 - (n << 64)) mod 2^512 */
-  bn.sub    w24, w22, w28
-  bn.subb   w25, w23, w29
+/**
+ * Converts arithmetic shares within the "mod p" scalar field to
+ * boolean shares by calling the 257-bit A2B function twice,
+ * first using unmodified 256-bit shares in reduced form,
+ * and then using modified 257-bit shares in unreduced form.
+ *
+ * It then checks if the MSB (carry bit) is true or false, to decide
+ * which of the two A2B results is used. This detects and handles an
+ * underflow during the subtraction of arithmetic masking.
+ *
+ * The logic behind the carry bit handling is as follows:
+ * Since A = (x - r) mod p, it must be either x - r exactly, if x >= r,
+ * or x - r + p, if r > x.
+ * So when we add 2^257 - p and then add A and x, we get either
+ * (2^257 - p + x - r + r) mod 2^257 = 2^257 - p + x
+ * (high bit is always true since p - x <= p < 2^256) for the x >= r case,
+ * or (2^257 - p + x - r + p + r) mod 2^257 = (2^257 + x) mod 2^257 = x
+ * (high bit is always false since x < p < 2^256) for the r > x case.
+ * So when the high bit is false, we pick this version, with 2^257 - p added.
+ * But if the high bit is true, then when we take the earlier computed
+ * boolean shares for (A + r) mod 2^257, as they would have been valid
+ * boolean shares for x since A = x - r exactly, no reduction needed,
+ * and therefore A + r = x. So if the high bit is true,
+ * we select the version without the 2^257 - p factor added.
+ *
+ * This routine runs in constant time.
+ *
+ * Flags: Flags have no meaning beyond the scope of this subroutine.
+ *
+ * @param[in]  w31: all-zero wide data register
+ * @param[in]  w19: mask r
+ * @param[in]  w11: arithmetically masked value A, such that x = A + r
+ * @param[out] w20: boolean masked value x', such that x = x' ^ r
+ *
+ * clobbered registers: w1 - w6, w11, w12, w18 - w29
+ * clobbered flag groups: FG0
+ */
+arithmetic_to_boolean_mod:
+  /* First step: calculate A2B from reduced values. */
 
-  /* Compute d1. Because 2^320 < 2 * (n << 64), a conditional subtraction is
-     sufficient to reduce. Similarly to the carry bit, the conditional bit here
-     is not very sensitive because the shares are large relative to n.
-       [w23,w22] <= x1 mod (n << 64) = d1 */
-  bn.sel    w22, w22, w24, FG0.C
-  bn.sel    w23, w23, w25, FG0.C
+  /* Save inputs for second A2B execution.
+     w24 <= w19 = r
+     w25 <= w11 = A */
+  bn.mov    w24, w19
+  bn.mov    w25, w11
 
-  /* Isolate the carry bit and shift it back into position.
-       w25 <= x0[320] << 64 */
-  bn.rshi   w25, w31, w21 >> 64
-  bn.rshi   w25, w25, w31 >> 192
+  /* Expand inputs r and A (w19 and w11) to 257-bit values [w19,w18]
+     and [w12,w11] and prepare input for 257-bit A2B function.
+     w18 <= w19
+     w19 <= w31
+     w11 <= w11 -> obsolete
+     w12 <= w31 */
+  bn.mov    w18, w19
+  bn.mov    w19, w31
+  bn.mov    w12, w31
 
-  /* Clear the carry bit from the original result.
-       [w21,w20] <= x0 mod 2^320 */
-  bn.xor    w21, w21, w25
+  /* Call 257-bit A2B function.
+     [w21,w20] <= x' */
+  jal       x1, arithmetic_to_boolean
 
-  /* Conditionally subtract (n << 64) to reduce.
-       [w21,w20] <= (x0 mod 2^320) mod (n << 64) */
-  bn.sub    w26, w20, w28
-  bn.subb   w27, w21, w29
-  bn.sel    w20, w20, w26, FG0.C
-  bn.sel    w21, w21, w27, FG0.C
+  /* Save intermediate result of reduced inputs.
+     w26 <= w20 = x' (lower part)
+     w27 <= w21 = x' (upper part) */
+  bn.mov    w26, w20
+  bn.mov    w27, w21
 
-  /* Compute the correction factor.
-       [w25,w24] <= (x[320] << 320) mod (n << 64) = c */
-  bn.sub    w26, w31, w28
-  bn.subb   w27, w25, w29
-  bn.sel    w24, w31, w26, FG0.C
-  bn.sel    w25, w25, w27, FG0.C
+  /* Second step: calculate A2B from unreduced values. */
 
-  /* Compute d0 with a modular subtraction. First we add (n << 64) to protect
-     against underflow, then conditionally subtract it again if needed.
-       [w21,w20] <= ([w21, w20] - [w25,w24]) mod (n << 64) = d1 */
-  bn.add    w20, w20, w28
-  bn.addc   w21, w21, w29
-  bn.sub    w20, w20, w24
-  bn.subb   w21, w21, w25
-  bn.sub    w26, w20, w28
-  bn.subb   w27, w21, w29
-  bn.sel    w20, w20, w26, FG0.C
-  bn.sel    w21, w21, w27, FG0.C
+  /* Restore and expand inputs r and A (w19 and w11) to 257-bit
+     values [w19,w18] and [w12,w11] and prepare input for
+     257-bit A2B function.
+     w18 <= w24
+     w19 <= w31
+     w11 <= w25
+     w12 <= w31 */
+  bn.mov    w18, w24
+  bn.mov    w19, w31
+  bn.mov    w11, w25
+  bn.mov    w12, w31
+
+  /* Get field modulus p.
+     w29 <= MOD() */
+  bn.wsrr   w29, 0x00 /* MOD */
+
+  /* Convert input A ([w12,w11]) to an unreduced value
+     in the 2^257 domain. For this add (2^257 - p) to A.
+     [w12,w11] <= [w12,w11] + 2^257 - w29 = A + 2^257 - p
+     w12 <= w12 + 0x2 = A + 2^257
+            -> equal to addition of 2^257
+               (w11 doesn't need to be touched)
+     [w12,w11] <= [w12,w11] - w29 = (A + 2^257) - p */
+  bn.addi   w12, w12, 0x2
+  bn.sub    w11, w11, w29
+  bn.subb   w12, w12, w31
+
+  /* Call 257-bit A2B function.
+     [w21,w20] <= x' */
+  jal       x1, arithmetic_to_boolean
+
+  /* Restore initial mask input of w19 for consistency
+     in calling functions.
+     w19 <= w24 */
+  bn.mov    w19, w24
+
+  /* Check MSB (carry bit) of second A2B result for true or false. */
+  bn.cmp    w21, w31 /* w21 can only be 0x1 or 0x0 */
+
+  /* Read the FG0.Z flag (bit 3).
+     x2 <= FG0.Z */
+  csrrs     x2, 0x7c0, x0
+  andi      x2, x2, 8
+  srli      x2, x2, 3
+
+  /* If FG0.Z flag is 0 (-> bn.cmp was not 0 -> MSB true),
+     return reduced A2B result. */
+  beq       x2, x0, arithmetic_to_boolean_mod_ret_reduced
+
+  /* Return result of unreduced A2B computation (second result). */
+  arithmetic_to_boolean_mod_ret_unreduced:
+  /* Result is still in w20, but because of constant time
+     requirement this is done anyway.
+     w20 <= w20 */
+  bn.mov    w20, w20
+
+  ret
+
+  /* Return result of reduced A2B computation (first result). */
+  arithmetic_to_boolean_mod_ret_reduced:
+  /* Restore previous result to output WDR.
+     w20 <= w26 */
+  bn.mov    w20, w26
+
+  ret
+
+/**
+ * Convert arithmetic shares to boolean ones using Goubin's algorithm.
+ *
+ * We use Goubin's boolean-to-arithmetic masking algorithm to switch from
+ * an arithmetic masking scheme to a boolean one without ever unmasking the
+ * seed. See Algorithm 2 here:
+ * https://link.springer.com/content/pdf/10.1007/3-540-44709-1_2.pdf
+ *
+ * This implementation expands the algorithm to 257 bits for carry bit
+ * handling. The carry bit can be used to detect and handle an
+ * underflow during the subtraction of arithmetic masking.
+ *
+ * This routine runs in constant time.
+ *
+ * Flags: Flags have no meaning beyond the scope of this subroutine.
+ *
+ * @param[in]  w31: all-zero wide data register
+ * @param[in]  w18: lower part of mask r
+ * @param[in]  w19: upper part of mask r
+ * @param[in]  w11: lower part of arithmetically masked value A,
+ *                  such that x = A + r
+ * @param[in]  w12: upper part of arithmetically masked value A,
+ *                  such that x = A + r
+ * @param[out] w20: lower part of boolean masked value x',
+ *                  such that x = x' ^ r
+ * @param[out] w21: upper part of boolean masked value x',
+ *                  such that x = x' ^ r
+ *
+ * clobbered registers: w1 - w6, w11, w12, and w18 - w21
+ * clobbered flag groups: FG0
+ */
+arithmetic_to_boolean:
+  /* Initialize inputs: in case of randomness in upper part of inputs
+     truncate to 257 bits. */
+  bn.rshi   w19, w19, w31 >> 1
+  bn.rshi   w19, w31, w19 >> 255
+  bn.rshi   w12, w12, w31 >> 1
+  bn.rshi   w12, w31, w12 >> 255
+
+  /* Fetch 257 bits of randomness.
+     [w2,w1] = gamma    <= URND */
+  bn.wsrr   w1, 2
+  bn.wsrr   w2, 2
+  bn.rshi   w2, w31, w2 >> 255
+
+  /* Double gamma and truncate to 257 bits.
+     [w4,w3] = T        <= 2 * [w2,w1] = 2 * gamma */
+  bn.add    w3, w1, w1
+  bn.addc   w4, w2, w2
+  bn.rshi   w4, w4, w31 >> 1
+  bn.rshi   w4, w31, w4 >> 255
+
+  /* [w21,w20] = x'     <= [w2,w1] ^ [w19,w18] = gamma ^ r */
+  bn.xor    w20, w1, w18
+  bn.xor    w21, w2, w19
+
+  /* [w6,w5] = omega    <= [w2,w1] & [w21,w20] = gamma & x' */
+  bn.and    w5, w1, w20
+  bn.and    w6, w2, w21
+
+  /* [w21,w20] = x'     <= [w4,w3] ^ [w12,w11] = T ^ A */
+  bn.xor    w20, w3, w11
+  bn.xor    w21, w4, w12
+
+  /* [w2,w1] = gamma    <= [w2,w1] ^ [w21,w20] = gamma ^ x' */
+  bn.xor    w1, w1, w20
+  bn.xor    w2, w2, w21
+
+  /* [w2,w1] = gamma    <= [w2,w1] & [w19,w18] = gamma & r */
+  bn.and    w1, w1, w18
+  bn.and    w2, w2, w19
+
+  /* [w6,w5] = omega    <= [w6,w5] ^ [w2,w1] = omega ^ gamma */
+  bn.xor    w5, w5, w1
+  bn.xor    w6, w6, w2
+
+  /* [w2,w1] = gamma    <= [w4,w3] & [w12,w11] = T & A */
+  bn.and    w1, w3, w11
+  bn.and    w2, w4, w12
+
+  /* [w6,w5] = omega    <= [w6,w5] ^ [w2,w1] = omega ^ gamma */
+  bn.xor    w5, w5, w1
+  bn.xor    w6, w6, w2
+
+  /* Loop for k = 1 to K - 1 = 257 - 1 */
+  loopi     256, 12
+
+    /* [w2,w1] = gamma  <= [w4,w3] & [w19,w18] = T & r */
+    bn.and     w1, w3, w18
+    bn.and     w2, w4, w19
+
+    /* [w2,w1] = gamma  <= [w2,w1] ^ [w6,w5] = gamma ^ omega */
+    bn.xor     w1, w1, w5
+    bn.xor     w2, w2, w6
+
+    /* [w4,w3] = T      <= [w4,w3] & [w12,w11] = T & A */
+    bn.and     w3, w3, w11
+    bn.and     w4, w4, w12
+
+    /* [w2,w1] = gamma  <= [w2,w1] ^ [w4,w3] = gamma ^ T */
+    bn.xor     w1, w1, w3
+    bn.xor     w2, w2, w4
+
+    /* Double gamma and truncate to 257 bits.
+       [w4,w3] = T      <= 2 * [w2,w1] = 2 * gamma */
+    bn.add    w3, w1, w1
+    bn.addc   w4, w2, w2
+    bn.rshi   w4, w4, w31 >> 1
+    bn.rshi   w4, w31, w4 >> 255
+
+  /* [w21,w20] = x'     <= [w21,w20] ^ [w4,w3] = x' ^ T */
+  bn.xor    w20, w20, w3
+  bn.xor    w21, w21, w4
 
   ret
 
@@ -2523,6 +1993,34 @@ x:
 .balign 32
 .weak y
 y:
+  .zero 32
+
+/* shared key affine unmasked x-coordinate
+   only for testing */
+.balign 32
+.weak x_a
+x_a:
+  .zero 32
+
+/* shared key affine unmasked y-coordinate
+   only for testing */
+.balign 32
+.weak y_a
+y_a:
+  .zero 32
+
+/* scalar mult mask value for x coordinate
+   in affine form */
+.balign 32
+.weak m_x
+m_x:
+  .zero 32
+
+/* scalar mult mask value for y coordinate
+   in affine form */
+.balign 32
+.weak m_y
+m_y:
   .zero 32
 
 /* private key d (in two 320b shares) */
