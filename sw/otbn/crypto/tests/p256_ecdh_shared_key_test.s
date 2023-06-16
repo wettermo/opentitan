@@ -3,14 +3,18 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 
 /**
- * Standalone elliptic curve P-256 scalar multiplication test
+ * Standalone elliptic curve P-256 ECDH shared key generation test
  *
  * Uses OTBN ECC P-256 lib to perform a scalar multiplication with a valid
  * example curve point and an example scalar. Both scalar and coordinates of
  * the curve point are contained in the .data section below.
+ * The x coordinate of the resulting curve point is masked arithmetically 
+ * with a random value. As the x coorodinate represents the actual
+ * shared key, the x coordinate and its mask are the converted from an 
+ * arithmetic to a boolean masking scheme.
  *
- * x and y cordinates of the resulting curve points are copied to wide
- * registers. See comment at the end of the file for expected values.
+ * The result of arithmetical unmasking as well as the result of boolean
+ * unmasking are compared with an expected value.
  */
 
 .section .text.start
@@ -30,31 +34,10 @@ p256_ecdh_shared_key_test:
   bn.wsrw   0x00, w29
 
   /* Call scalar point multiplication routine for shared key generation in P-256 lib. */
-  jal      x1, p256_ecdh_shared_key
+  jal      x1, p256_scalar_mult_ecdh
 
   /* Arithmetical unmasking of the x coordinate (shared key).
        w0 <= dmem[x] + dmem[m_x] mod p */
-
-  /* w3 <= dmem[x] */
-  li        x3, 3
-  la        x4, x
-  bn.lid    x3, 0(x4)
-
-  /* w4 <= dmem[m_x] */
-  li        x3, 4
-  la        x4, m_x
-  bn.lid    x3, 0(x4)
-
-  /* w0 <= dmem[x] + dmem[m_x] mod p*/
-  bn.addm    w0, w3, w4
-
-  /* Store unmasked x to DMEM for comparison with boolean masking
-       dmem[x_a] <= w0 */
-  li        x3, 0
-  la        x4, x_a
-  bn.sid    x3, 0(x4)
-
-  /* Arithmetic-to-boolean conversion*/
 
   /* w11 <= dmem[x] */
   li        x3, 11
@@ -66,6 +49,16 @@ p256_ecdh_shared_key_test:
   la        x4, m_x
   bn.lid    x3, 0(x4)
 
+  /* w0 <= dmem[x] + dmem[m_x] mod p*/
+  bn.addm    w0, w11, w19
+
+  /* Store unmasked x to DMEM for comparison with boolean masking
+       dmem[x_a] <= w0 */
+  li        x3, 0
+  la        x4, x_a
+  bn.sid    x3, 0(x4)
+
+  /* Arithmetic-to-boolean conversion */
   jal       x1, arithmetic_to_boolean_mod
 
   /* Unmask and compare values

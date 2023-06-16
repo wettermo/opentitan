@@ -1,3 +1,14 @@
+/* Copyright lowRISC contributors. */
+/* Licensed under the Apache License, Version 2.0, see LICENSE for details. */
+/* SPDX-License-Identifier: Apache-2.0 */
+
+/**
+ * Standalone 257-bit arithmetic-to-boolean masking test
+ *
+ * Uses OTBN ECC P-256 lib to perform arithmetic-to-boolean conversion of
+ * a given masked 257-bit value with a random mask. Afterwards it unmasks the
+ * result and compares it with the initial value from DMEM.
+ */
 
 .section .text.start
 
@@ -94,4 +105,4 @@ x_l:
   .word 0x22fe027b
   .word 0x8a29dc16
   .word 0xf7109d54
-  .word 0x162c5d06
+  .word 0x762c5d06

@@ -1,3 +1,14 @@
+/* Copyright lowRISC contributors. */
+/* Licensed under the Apache License, Version 2.0, see LICENSE for details. */
+/* SPDX-License-Identifier: Apache-2.0 */
+
+/**
+ * Standalone elliptic curve P-256 arithmetic-to-boolean masking test
+ *
+ * Uses OTBN ECC P-256 lib to perform arithmetic-to-boolean conversion of
+ * a given masked curve value with a random mask. Afterwards it unmasks the
+ * result and compares it with the initial value from DMEM.
+ */
 
 .section .text.start
 

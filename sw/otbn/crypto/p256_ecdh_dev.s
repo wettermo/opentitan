@@ -1445,9 +1445,10 @@ mod_inv_var:
 /**
  * Externally callable wrapper for P-256 scalar point multiplication
  *
- * returns R = k*P = k*(x_am, y_am)
- *         with R, P being valid arithmetically masked P-256 curve points
- *              in affine form, k being a 256 bit scalar.
+ * returns R = k*P = k*(x_a, y_a)
+ *         with R, P being valid P-256 curve points in affine form,
+ *         k being a 256 bit scalar. The x coordinate of R is
+ *         arithmetiaclly masked.
  *
  * This routine assumes that the scalar k is provided in two shares, k0 and k1,
  * where:
@@ -1461,9 +1462,8 @@ mod_inv_var:
  * @param[in]      dmem[x]:   affine x-coordinate in dmem
  * @param[in]      dmem[y]:   affine y-coordinate in dmem
  * @param[out]     dmem[x]:   affine arithmetically masked x-coordinate in dmem
- * @param[out]     dmem[y]:   affine arithmetically masked y-coordinate in dmem
+ * @param[out]     dmem[y]:   affine y-coordinate in dmem
  * @param[out]     dmem[m_x]:   arithmetic mask for x coordinate in dmem
- * @param[out]     dmem[m_y]:   arithmetic mask for y coordinate in dmem
  *
  * Flags: When leaving this subroutine, the M, L and Z flags of FG0 depend on
  *        the computed affine y-coordinate.
@@ -1500,34 +1500,28 @@ p256_scalar_mult_ecdh:
   jal       x1, scalar_mult_int
 
   /* Arithmetic masking:
-   1. Generate two random masks (for x and y)
-   2. Subtract masks from projective x and y coordinate
+   1. Generate a random mask
+   2. Subtract masks from projective x coordinate
       (x, y, z) -> ((x - m) mod p,
-                    (y - m) mod p,
+                     y,
                      z)
    3. Convert masked curve point back to affine
       form.
-   4. Multiply masks with z^-1 for use in
+   4. Multiply mask with z^-1 for use in
       affine space. */
 
-  /* Fetch two fresh random numbers as masks.
-       w2 <= URND()
-       w3 <= URND() */
+  /* Fetch a fresh random number as mask.
+       w2 <= URND() */
   bn.wsrr   w2, 0x2 /* URND */
-  bn.wsrr   w3, 0x2 /* URND */
-  /*bn.addm   w2, w2, w31 /* mod p */
-  /*bn.addm   w3, w3, w31 /* mod p */
 
-  /* Subtract random masks to x and y coordinate of
+  /* Subtract random mask from x coordinate of
      projective point.
      The addition has to be done within the underlying
      finite field -> mod p.
-     w8 = (w8 - w2) mod p
-     w9 = (w9 - w2) mod p */
+     w8 = (w8 - w2) mod p */
   bn.subm    w8, w8, w2
-  bn.subm    w9, w9, w3
 
-  /* Convert masked results back to affine coordinates.
+  /* Convert masked result back to affine coordinates.
      R = (x_a, y_a) = (w11, w12) */
   jal       x1, proj_to_affine
 
@@ -1572,41 +1566,35 @@ p256_scalar_mult_ecdh:
   la        x4, m_x
   bn.sid    x2, 0(x4)
 
-  /* Move y coordinate mask to
-     mod_mul_256x256 input WDR.
-     w24 <= w2 = m_y */
-  bn.mov    w24, w3
-
-  /* Compute modular multiplication of m_y and z^-1.
-     w19 = w24 * w25 mod w29 = m_y * z^-1 mod p */
-  jal       x1, mod_mul_256x256
-
-  /* Store "affine" mask to DMEM.
-     dmem[m_y] <= w19 = m_y * z^-1 mod p */
-  li        x2, 19
-  la        x4, m_y
-  bn.sid    x2, 0(x4)
-
   ret
 
 /**
  * Function to test ecdh shared key generation.
  */
 p256_ecdh_shared_key:
-  /* Generate shared key d*Q.
-       dmem[x] <= (d*Q).x
-       dmem[y] <= (d*Q).y */
+  /* Generate arithmetically masked shared key d*Q.
+       dmem[x] <= (d*Q).x - m_x mod p
+       dmem[y] <= (d*Q).y - m_y mod p */
   jal      x1, p256_scalar_mult_ecdh
 
-  /* TODO: `p256_scalar_mult` and the code below briefly handle the shared key
-     in unmasked form. The best way to fixing this is likely:
-       - modify scalar_mult_int to return projective coordinates
-       - get additive arithmetic mask for x before converting it to affine
-       - multiply both shares by Z^-1 to convert to affine form
-       - run a safe arithmetic-to-boolean conversion algorithm
-  */
+  /* Arithmetic-to-boolean conversion*/
 
-  /* TODO: call arithmetic to boolean algorithm */
+  /* w11 <= dmem[x] */
+  li        x3, 11
+  la        x4, x
+  bn.lid    x3, 0(x4)
+
+  /* w19 <= dmem[m_x] */
+  li        x3, 19
+  la        x4, m_x
+  bn.lid    x3, 0(x4)
+
+  jal       x1, arithmetic_to_boolean_mod
+
+  /* dmem[x] <= w20 = x' */
+  li        x3, 20
+  la        x4, x
+  bn.sid    x3, 0(x4)
 
   ret
 
@@ -1644,7 +1632,7 @@ p256_ecdh_shared_key:
  * @param[in]  w11: arithmetically masked value A, such that x = A + r
  * @param[out] w20: boolean masked value x', such that x = x' ^ r
  *
- * clobbered registers: w1 - w6, w11, w12, w18 - w29
+ * clobbered registers: w1 - w6, w11, w12, w18, w20 - w27, and w29
  * clobbered flag groups: FG0
  */
 arithmetic_to_boolean_mod:
@@ -1995,32 +1983,11 @@ x:
 y:
   .zero 32
 
-/* shared key affine unmasked x-coordinate
-   only for testing */
-.balign 32
-.weak x_a
-x_a:
-  .zero 32
-
-/* shared key affine unmasked y-coordinate
-   only for testing */
-.balign 32
-.weak y_a
-y_a:
-  .zero 32
-
 /* scalar mult mask value for x coordinate
    in affine form */
 .balign 32
 .weak m_x
 m_x:
-  .zero 32
-
-/* scalar mult mask value for y coordinate
-   in affine form */
-.balign 32
-.weak m_y
-m_y:
   .zero 32
 
 /* private key d (in two 320b shares) */
