@@ -103,38 +103,31 @@ keypair_random:
  * @param[in]   dmem[x]: Public key (Q) x-coordinate.
  * @param[in]   dmem[y]: Public key (Q) y-coordinate.
  * @param[out]  dmem[x]: x0, first share of shared key.
- * @param[out]  dmem[y]: x1, second share of shared key.
+ * @param[out]  dmem[m_x]: x1, second share of shared key.
  */
 shared_key:
-  /* Generate shared key d*Q.
-       dmem[x] <= (d*Q).x
-       dmem[y] <= (d*Q).y */
-  jal      x1, p256_scalar_mult
+  /* Generate arithmetically masked shared key d*Q.
+       dmem[x] <= (d*Q).x - m_x mod p
+       dmem[y] <= (d*Q).y mod p */
+  jal      x1, p256_scalar_mult_ecdh
 
-  /* TODO: `p256_scalar_mult` and the code below briefly handle the shared key
-     in unmasked form. The best way to fixing this is likely:
-       - modify scalar_mult_int to return projective coordinates
-       - get additive arithmetic mask for x before converting it to affine
-       - multiply both shares by Z^-1 to convert to affine form
-       - run a safe arithmetic-to-boolean conversion algorithm
- */
+  /* Arithmetic-to-boolean conversion*/
 
-  /* Fetch a fresh random number for blinding.
-       w2 <= URND() */
-  bn.wsrr   w2, 0x2 /* URND */
-
-  /* Store the random number as the second share.
-       dmem[y] <= w2 */
-  li        x2, 2
-  la        x4, y
-  bn.sid    x2, 0(x4)
-
-  /* Blind the x-coordinate.
-       dmem[x] <= dmem[x] ^ w2 */
-  li        x3, 3
+  /* w11 <= dmem[x] */
+  li        x3, 11
   la        x4, x
   bn.lid    x3, 0(x4)
-  bn.xor    w3, w3, w2
+
+  /* w19 <= dmem[m_x] */
+  li        x3, 19
+  la        x4, m_x
+  bn.lid    x3, 0(x4)
+
+  jal       x1, arithmetic_to_boolean_mod
+
+  /* dmem[x] <= w20 = x' */
+  li        x3, 20
+  la        x4, x
   bn.sid    x3, 0(x4)
 
   ecall
@@ -254,6 +247,12 @@ x:
 .globl y
 .balign 32
 y:
+  .zero 32
+
+/* shared key mask value */
+.globl m_x
+.balign 32
+m_x:
   .zero 32
 
 /* Secret key (d) in two shares: d = (d0 + d1) mod n.

@@ -331,7 +331,7 @@ otbn_sim_test(
     ],
     exp = "p256_ecdh_shared_key_test.exp",
     deps = [
-        "//sw/otbn/crypto:p256_ecdh_dev",
+        "//sw/otbn/crypto:p256",
     ],
 )
 
@@ -342,7 +342,7 @@ otbn_sim_test(
     ],
     exp = "p256_arithmetic_to_boolean_test.exp",
     deps = [
-        "//sw/otbn/crypto:p256_ecdh_dev",
+        "//sw/otbn/crypto:p256",
     ],
 )
 
@@ -353,7 +353,7 @@ otbn_sim_test(
     ],
     exp = "p256_arithmetic_to_boolean_mod_test.exp",
     deps = [
-        "//sw/otbn/crypto:p256_ecdh_dev",
+        "//sw/otbn/crypto:p256",
     ],
 )
 

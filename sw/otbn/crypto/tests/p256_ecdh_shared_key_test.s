@@ -34,7 +34,7 @@ p256_ecdh_shared_key_test:
   bn.wsrw   0x00, w29
 
   /* Call scalar point multiplication routine for shared key generation in P-256 lib. */
-  jal      x1, p256_scalar_mult_ecdh
+  jal      x1, p256_scalar_mult
 
   /* Arithmetical unmasking of the x coordinate (shared key).
        w0 <= dmem[x] + dmem[m_x] mod p */
