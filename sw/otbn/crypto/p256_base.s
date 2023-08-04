@@ -23,6 +23,8 @@
 
 /* Exposed only for testing or SCA purposes. */
 .globl mod_inv
+.globl arithmetic_to_boolean_mod
+.globl arithmetic_to_boolean
 
 .text
 
