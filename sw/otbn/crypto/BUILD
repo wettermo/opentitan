@@ -89,6 +89,12 @@ otbn_library(
         "p256_verify.s",
     ],
 )
+otbn_library(
+    name = "p256_a2b",
+    srcs = [
+        "p256_a2b.s",
+    ],
+)
 
 otbn_binary(
     name = "p256_ecdh",
@@ -97,6 +103,7 @@ otbn_binary(
     ],
     deps = [
         ":p256_base",
+        ":p256_a2b",
     ],
 )
 
