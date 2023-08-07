@@ -99,6 +99,10 @@ p256_sign:
   la        x22, p256_gy
   jal       x1, scalar_mult_int
 
+  /* Convert masked result back to affine coordinates.
+     R = (x_a, y_a) = (w11, w12) */
+  jal       x1, proj_to_affine
+
   /* setup modulus n (curve order) and Barrett constant
      MOD <= w29 <= n = dmem[p256_n]; w28 <= u_n = dmem[p256_u_n]  */
   li        x2, 29

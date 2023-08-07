@@ -20,6 +20,7 @@
 .globl scalar_mult_int
 .globl mod_inv_var
 .globl proj_add
+.globl proj_to_affine
 
 /* Exposed only for testing or SCA purposes. */
 .globl mod_inv
