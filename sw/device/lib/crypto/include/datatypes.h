@@ -81,10 +81,10 @@ typedef enum otcrypto_status_value {
  * crypto library will throw an error if `len` doesn't match expectations.
  */
 typedef struct otcrypto_byte_buf {
-  // Pointer to the data.
-  uint8_t *data;
   // Length of the data in bytes.
   size_t len;
+  // Pointer to the data.
+  uint8_t *data;
 } otcrypto_byte_buf_t;
 
 /**
@@ -96,10 +96,10 @@ typedef struct otcrypto_byte_buf {
  * otcrypto_byte_buf_t` would still allow data to change.
  */
 typedef struct otcrypto_const_byte_buf {
-  // Pointer to the data.
-  const uint8_t *const data;
   // Length of the data in bytes.
   const size_t len;
+  // Pointer to the data.
+  const uint8_t *const data;
 } otcrypto_const_byte_buf_t;
 
 /**
@@ -110,10 +110,10 @@ typedef struct otcrypto_const_byte_buf {
  * crypto library will throw an error if `len` doesn't match expectations.
  */
 typedef struct otcrypto_word32_buf {
-  // Pointer to the data.
-  uint32_t *data;
   // Length of the data in words.
   size_t len;
+  // Pointer to the data.
+  uint32_t *data;
 } otcrypto_word32_buf_t;
 
 /**
@@ -125,10 +125,10 @@ typedef struct otcrypto_word32_buf {
  * otcrypto_word32_buf_t` would still allow data to change.
  */
 typedef struct otcrypto_const_word32_buf {
-  // Pointer to the data.
-  const uint32_t *const data;
   // Length of the data in words.
   const size_t len;
+  // Pointer to the data.
+  const uint32_t *const data;
 } otcrypto_const_word32_buf_t;
 
 /**
@@ -253,8 +253,12 @@ typedef enum otcrypto_ecc_key_mode {
  * Values are hardened.
  */
 typedef enum otcrypto_kdf_key_mode {
-  // Mode KDF-CTR with HMAC as PRF.
-  kOtcryptoKdfKeyModeCtrHmac = 0x12f,
+  // Mode KDF-CTR with HMAC-SHA256 as PRF.
+  kOtcryptoKdfKeyModeCtrHmacSha256 = 0x12f,
+  // Mode KDF-CTR with HMAC-SHA384 as PRF.
+  kOtcryptoKdfKeyModeCtrHmacSha384 = 0x22f,
+  // Mode KDF-CTR with HMAC-SHA512 as PRF.
+  kOtcryptoKdfKeyModeCtrHmacSha512 = 0x32f,
   // Mode KDF-KMAC with KMAC128 as PRF.
   kOtcryptoKdfKeyModeKmac128 = 0xe5e,
   // Mode KDF-KMAC with KMAC256 as PRF.
@@ -319,9 +323,15 @@ typedef enum otcrypto_key_mode {
   // Key is intended for X25519 mode.
   kOtcryptoKeyModeX25519 =
       kOtcryptoKeyTypeEcc << 16 | kOtcryptoEccKeyModeX25519,
-  // Key is intended for KDF-CTR with HMAC as PRF.
-  kOtcryptoKeyModeKdfCtrHmac =
-      kOtcryptoKeyTypeKdf << 16 | kOtcryptoKdfKeyModeCtrHmac,
+  // Key is intended for KDF-CTR with HMAC-SHA256 as PRF.
+  kOtcryptoKeyModeKdfCtrHmacSha256 =
+      kOtcryptoKeyTypeKdf << 16 | kOtcryptoKdfKeyModeCtrHmacSha256,
+  // Key is intended for KDF-CTR with HMAC-SHA384 as PRF.
+  kOtcryptoKeyModeKdfCtrHmacSha384 =
+      kOtcryptoKeyTypeKdf << 16 | kOtcryptoKdfKeyModeCtrHmacSha384,
+  // Key is intended for KDF-CTR with HMAC-SHA512 as PRF.
+  kOtcryptoKeyModeKdfCtrHmacSha512 =
+      kOtcryptoKeyTypeKdf << 16 | kOtcryptoKdfKeyModeCtrHmacSha512,
   // Key is intended for KDF with KMAC128 as PRF.
   kOtcryptoKeyModeKdfKmac128 =
       kOtcryptoKeyTypeKdf << 16 | kOtcryptoKdfKeyModeKmac128,
@@ -450,10 +460,10 @@ typedef enum otcrypto_hash_mode {
 typedef struct otcrypto_hash_digest {
   // Digest type.
   otcrypto_hash_mode_t mode;
-  // Digest data.
-  uint32_t *data;
   // Digest length in 32-bit words.
   size_t len;
+  // Digest data.
+  uint32_t *data;
 } otcrypto_hash_digest_t;
 
 #ifdef __cplusplus

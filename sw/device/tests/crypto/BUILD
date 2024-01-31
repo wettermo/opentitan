@@ -702,3 +702,19 @@ filegroup(
         "rsa_3072_verify_testvectors.h.tpl",
     ],
 )
+
+opentitan_test(
+    name = "kdf_functest",
+    srcs = ["kdf_functest.c"],
+    exec_env = EARLGREY_TEST_ENVS,
+    verilator = verilator_params(
+        timeout = "long",
+    ),
+    deps = [
+        "//sw/device/lib/crypto/drivers:entropy",
+        "//sw/device/lib/crypto/impl:kdf",
+        "//sw/device/lib/crypto/impl:keyblob",
+        "//sw/device/lib/runtime:log",
+        "//sw/device/lib/testing/test_framework:ottf_main",
+    ],
+)
