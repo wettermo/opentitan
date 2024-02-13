@@ -7,6 +7,7 @@
 
 #include "sw/device/lib/crypto/include/datatypes.h"
 #include "sw/device/lib/crypto/include/mac.h"
+#include "sw/device/lib/crypto/include/mac.h"
 
 /**
  * @file
@@ -20,6 +21,11 @@ extern "C" {
 #endif  // __cplusplus
 
 /**
+ * Performs the key derivation function in counter mode wtih HMAC according to
+ * NIST SP 800-108r1.
+ *
+ * The supported PRF engine for the KDF function is HMAC (since KMAC does not
+ * use the counter mode).
  * Performs the key derivation function in counter mode wtih HMAC according to
  * NIST SP 800-108r1.
  *
@@ -53,7 +59,11 @@ otcrypto_status_t otcrypto_kdf_hmac_ctr(
 /**
  * Performs the key derivation function with single KMAC invocation according to
  * NIST SP 800-108r1.
+ * Performs the key derivation function with single KMAC invocation according to
+ * NIST SP 800-108r1.
  *
+ * The supported PRF engine for the KDF function is either of
+ * {KMAC128, KMAC256}. This is passed with `kmac_mode` input argument.
  * The supported PRF engine for the KDF function is either of
  * {KMAC128, KMAC256}. This is passed with `kmac_mode` input argument.
  *
@@ -77,7 +87,11 @@ otcrypto_status_t otcrypto_kdf_hmac_ctr(
  * @return Result of the key derivation operation.
  */
 otcrypto_status_t otcrypto_kdf_kmac(
+otcrypto_status_t otcrypto_kdf_kmac(
     const otcrypto_blinded_key_t key_derivation_key,
+    otcrypto_kmac_mode_t kmac_mode, const otcrypto_const_byte_buf_t kdf_label,
+    const otcrypto_const_byte_buf_t kdf_context, size_t required_byte_len,
+    otcrypto_blinded_key_t *keying_material);
     otcrypto_kmac_mode_t kmac_mode, const otcrypto_const_byte_buf_t kdf_label,
     const otcrypto_const_byte_buf_t kdf_context, size_t required_byte_len,
     otcrypto_blinded_key_t *keying_material);

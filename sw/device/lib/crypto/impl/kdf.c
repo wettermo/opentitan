@@ -14,6 +14,9 @@
 // TODO: remove after testing
 #include "sw/device/lib/runtime/log.h"
 
+// TODO: remove after testing
+#include "sw/device/lib/runtime/log.h"
+
 // Module ID for status codes.
 #define MODULE_ID MAKE_MODULE_ID('k', 'd', 'f')
 
