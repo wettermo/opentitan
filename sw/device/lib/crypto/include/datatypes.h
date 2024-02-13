@@ -85,8 +85,6 @@ typedef struct otcrypto_byte_buf {
   size_t len;
   // Pointer to the data.
   uint8_t *data;
-  // Pointer to the data.
-  uint8_t *data;
 } otcrypto_byte_buf_t;
 
 /**
@@ -98,8 +96,6 @@ typedef struct otcrypto_byte_buf {
  * otcrypto_byte_buf_t` would still allow data to change.
  */
 typedef struct otcrypto_const_byte_buf {
-  // Length of the data in bytes.
-  const size_t len;
   // Length of the data in bytes.
   const size_t len;
   // Pointer to the data.
@@ -118,8 +114,6 @@ typedef struct otcrypto_word32_buf {
   size_t len;
   // Pointer to the data.
   uint32_t *data;
-  // Pointer to the data.
-  uint32_t *data;
 } otcrypto_word32_buf_t;
 
 /**
@@ -131,8 +125,6 @@ typedef struct otcrypto_word32_buf {
  * otcrypto_word32_buf_t` would still allow data to change.
  */
 typedef struct otcrypto_const_word32_buf {
-  // Length of the data in words.
-  const size_t len;
   // Length of the data in words.
   const size_t len;
   // Pointer to the data.
@@ -470,8 +462,6 @@ typedef struct otcrypto_hash_digest {
   otcrypto_hash_mode_t mode;
   // Digest length in 32-bit words.
   size_t len;
-  // Digest data.
-  uint32_t *data;
   // Digest data.
   uint32_t *data;
 } otcrypto_hash_digest_t;

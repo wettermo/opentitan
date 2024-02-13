@@ -86,12 +86,9 @@ otcrypto_status_t otcrypto_kdf_hmac_ctr(
  * populated by this function.
  * @return Result of the key derivation operation.
  */
-otcrypto_status_t otcrypto_kdf_kmac(
+
 otcrypto_status_t otcrypto_kdf_kmac(
     const otcrypto_blinded_key_t key_derivation_key,
-    otcrypto_kmac_mode_t kmac_mode, const otcrypto_const_byte_buf_t kdf_label,
-    const otcrypto_const_byte_buf_t kdf_context, size_t required_byte_len,
-    otcrypto_blinded_key_t *keying_material);
     otcrypto_kmac_mode_t kmac_mode, const otcrypto_const_byte_buf_t kdf_label,
     const otcrypto_const_byte_buf_t kdf_context, size_t required_byte_len,
     otcrypto_blinded_key_t *keying_material);
