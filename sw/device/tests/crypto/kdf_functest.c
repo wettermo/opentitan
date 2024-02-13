@@ -191,7 +191,7 @@ static status_t func_test1(void) {
       0x02,
   };
   uint32_t km_data[] = {
-      0xfa6d7a61, 
+      0xfa6d7a61,
   };
   kdf_test_vector_t test = {
       .kdf_mode = kOtcryptoKeyModeKdfCtrHmacSha256,
@@ -229,11 +229,10 @@ static status_t func_test2(void) {
       0x03,
   };
   uint8_t label_data[] = {
-      0x02, 
+      0x02,
   };
-  uint32_t km_data[] = {
-      0xd1c92a5e, 0x1940f781, 0xdbf36688, 0x5d2e8e11, 0xfcd77ff3, 0x6ee7d2b4, 0x6d2bd220, 0x393d2014
-  };
+  uint32_t km_data[] = {0xd1c92a5e, 0x1940f781, 0xdbf36688, 0x5d2e8e11,
+                        0xfcd77ff3, 0x6ee7d2b4, 0x6d2bd220, 0x393d2014};
   kdf_test_vector_t test = {
       .kdf_mode = kOtcryptoKeyModeKdfCtrHmacSha256,
       .key_mode = kOtcryptoKeyModeHmacSha256,
@@ -267,29 +266,16 @@ static status_t func_test3(void) {
       0x00000000,
   };
   uint8_t context_data[] = {
-      0x03, 
+      0x03,
   };
   uint8_t label_data[] = {
-      0x02, 
+      0x02,
   };
   uint32_t km_data[] = {
-      0xb51b43f3,
-      0x31f9b85f,
-      0x52a56227,
-      0x8f3c0c39,
-      0x76ed91d2,
-      0xfdfbdc99,
-      0xc365866d,
-      0xdbf52315,
-      0xccaad572,
-      0xacc901cf,
-      0xe9a0bf70,
-      0x3e726c53,
-      0x27f9acd8,
-      0x951cc061,
-      0xb4e0fdc6,
-      0x235b60b0,
-};
+      0xb51b43f3, 0x31f9b85f, 0x52a56227, 0x8f3c0c39, 0x76ed91d2, 0xfdfbdc99,
+      0xc365866d, 0xdbf52315, 0xccaad572, 0xacc901cf, 0xe9a0bf70, 0x3e726c53,
+      0x27f9acd8, 0x951cc061, 0xb4e0fdc6, 0x235b60b0,
+  };
   kdf_test_vector_t test = {
       .kdf_mode = kOtcryptoKeyModeKdfCtrHmacSha256,
       .key_mode = kOtcryptoKeyModeHmacSha256,
@@ -312,8 +298,8 @@ bool test_main(void) {
   CHECK_STATUS_OK(entropy_complex_init());
 
   status_t test_result = OK_STATUS();
-  //EXECUTE_TEST(test_result, func_test1);
-  //EXECUTE_TEST(test_result, func_test2);
+  // EXECUTE_TEST(test_result, func_test1);
+  // EXECUTE_TEST(test_result, func_test2);
   EXECUTE_TEST(test_result, func_test3);
   return status_ok(test_result);
 }

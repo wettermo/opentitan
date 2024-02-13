@@ -59,7 +59,7 @@ static status_t digest_num_words_from_key_mode(otcrypto_key_mode_t key_mode,
 }
 
 /**
- * Construct a big endian bytestring representation of an integer.
+ * Construct a bytestring representation of an integer.
  *
  * @param num Number to be converted.
  * @param[out] bytestring The output string. 
@@ -75,6 +75,21 @@ static status_t long_to_bytes(size_t num, uint8_t *bytestring) {
     return OTCRYPTO_OK;
 }
 
+/**
+ * Check if the string contains a 0x00 byte
+ *
+ * @param buffer Inspected string.
+ * @return OK or error.
+ */
+static status_t check_zero_byte(const otcrypto_const_byte_buf_t buffer) {
+  for(size_t i = 0; i < buffer.len; i++) {
+    if (0x00 == buffer.data[i]) {
+      return OTCRYPTO_BAD_ARGS;
+    }
+  }
+  return OTCRYPTO_OK;
+}
+
 otcrypto_status_t otcrypto_kdf_hmac_ctr(
     const otcrypto_blinded_key_t key_derivation_key,
     const otcrypto_const_byte_buf_t kdf_label,
@@ -84,7 +99,6 @@ otcrypto_status_t otcrypto_kdf_hmac_ctr(
       key_derivation_key.keyblob == NULL) {
     return OTCRYPTO_BAD_ARGS;
   }
-  //LOG_INFO("kdk & km are not null.");
   if (launder32(keying_material->config.security_level) !=
           kOtcryptoKeySecurityLevelLow ||
       launder32(key_derivation_key.config.security_level) !=
@@ -92,21 +106,16 @@ otcrypto_status_t otcrypto_kdf_hmac_ctr(
     // The underlying HMAC implementation is not currently hardened.
     return OTCRYPTO_NOT_IMPLEMENTED;
   }
-  //LOG_INFO("security level is low.");
+
   // Infer the digest size.
   size_t digest_words = 0;
   HARDENED_TRY(digest_num_words_from_key_mode(
       key_derivation_key.config.key_mode, &digest_words));
-  //LOG_INFO("digest words extracted. (%d)", digest_words);
-  // Check the PRK configuration.
-  // TODO: replace with hmac ctr check
-  // HARDENED_TRY(hkdf_check_prk(digest_words, &key_derivation_key));
 
   // Ensure that the derived key is a symmetric key masked with XOR and is not
   // supposed to be hardware-backed.
   // TODO: check if this is even necessary
   HARDENED_TRY(keyblob_ensure_xor_masked(keying_material->config));
-  //LOG_INFO("km keyblob xor masked.");
   // Check the keyblob length.
   size_t keyblob_bytelen =
       keyblob_num_words(keying_material->config) * sizeof(uint32_t);
@@ -114,7 +123,6 @@ otcrypto_status_t otcrypto_kdf_hmac_ctr(
     return OTCRYPTO_BAD_ARGS;
   }
   HARDENED_CHECK_EQ(keying_material->keyblob_length, keyblob_bytelen);
-  //LOG_INFO("keyblob bytelength OK. (%d)", keyblob_bytelen);
   // Check that the unmasked key length is not too large for HMAC CTR
   // (see NIST SP 800-108r1, section 4.1)
   // TODO: idk if the iteration number makes sense in this case
@@ -124,7 +132,13 @@ otcrypto_status_t otcrypto_kdf_hmac_ctr(
     return OTCRYPTO_BAD_ARGS;
   }
   HARDENED_CHECK_LE(num_iterations, 255);
-  //LOG_INFO("# of iterations OK. (%d)", num_iterations);
+
+  // Check if label or context contain 0x00 bytes
+  // Since 0x00 is used as the delimiter between label and context
+  // there shouldn't be multiple instances in input data 
+  HARDENED_TRY(check_zero_byte(kdf_label));
+  HARDENED_TRY(check_zero_byte(kdf_context));
+
   // Create a buffer that holds input data:
   // [i]_2 || Label || 0x00 || Context || [L]_2 (see NIST SP 800-108r1,
   // section 4.1)
@@ -148,6 +162,7 @@ otcrypto_status_t otcrypto_kdf_hmac_ctr(
   uint8_t counter_bytestring[4];
   uint32_t keying_material_data[required_wordlen];
   uint32_t *t_data = keying_material_data;
+  
   for (size_t i = 0; i < num_iterations; i++) {
     long_to_bytes(i+1, counter_bytestring);
     memcpy(input_data, counter_bytestring, 4);
@@ -155,12 +170,13 @@ otcrypto_status_t otcrypto_kdf_hmac_ctr(
         .data = t_data,
         .len = digest_words,
     };
-    // LOG_INFO("Counter + Fixed input: %x %x %x %x %x %x %x %x %x %x %x", 
-    //         input_data[0], input_data[1], input_data[2], input_data[3],
-    //         input_data[4], input_data[5], input_data[6], input_data[7],
-    //         input_data[8], input_data[9], input_data[10]);
     HARDENED_TRY(otcrypto_hmac(&key_derivation_key, input_buf, t_words));
-    memcpy(keying_material->keyblob + (i * t_words.len * sizeof(uint32_t)), t_words.data, t_words.len * sizeof(uint32_t));
+    memcpy(keying_material->keyblob + i * t_words.len, t_words.data, t_words.len * sizeof(uint32_t));
+    // LOG_INFO("0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x\n0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x", 
+    //           t_words.data[0],  t_words.data[1],  t_words.data[2],  t_words.data[3],
+    //           t_words.data[4],  t_words.data[5],  t_words.data[6],  t_words.data[7],
+    //           t_words.data[8],  t_words.data[9],  t_words.data[10], t_words.data[11],
+    //           t_words.data[12], t_words.data[13], t_words.data[14], t_words.data[15]);
   }
 
   // Generate a mask (all-zero for now, since HMAC is unhardened anyway).

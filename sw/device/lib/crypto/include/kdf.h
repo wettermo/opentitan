@@ -7,7 +7,6 @@
 
 #include "sw/device/lib/crypto/include/datatypes.h"
 #include "sw/device/lib/crypto/include/mac.h"
-#include "sw/device/lib/crypto/include/mac.h"
 
 /**
  * @file
