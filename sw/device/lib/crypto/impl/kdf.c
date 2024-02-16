@@ -105,24 +105,24 @@ otcrypto_status_t otcrypto_kdf_hmac_ctr(
   }
 
   // Infer the digest size.
-  size_t digest_words = 0;
+  size_t digest_word_len = 0;
   HARDENED_TRY(digest_num_words_from_key_mode(
-      key_derivation_key.config.key_mode, &digest_words));
+      key_derivation_key.config.key_mode, &digest_word_len));
 
   // Ensure that the derived key is a symmetric key masked with XOR and is not
   // supposed to be hardware-backed.
   HARDENED_TRY(keyblob_ensure_xor_masked(keying_material->config));
   // Check the keyblob length.
-  size_t keyblob_bytelen =
+  size_t keyblob_byte_len =
       keyblob_num_words(keying_material->config) * sizeof(uint32_t);
-  if (launder32(keying_material->keyblob_length) != keyblob_bytelen) {
+  if (launder32(keying_material->keyblob_length) != keyblob_byte_len) {
     return OTCRYPTO_BAD_ARGS;
   }
-  HARDENED_CHECK_EQ(keying_material->keyblob_length, keyblob_bytelen);
+  HARDENED_CHECK_EQ(keying_material->keyblob_length, keyblob_byte_len);
   // Check that the unmasked key length is not too large for HMAC CTR
   // (see NIST SP 800-108r1, section 4.1)
-  size_t required_wordlen = ceil_div(required_byte_len, sizeof(uint32_t));
-  size_t num_iterations = ceil_div(required_wordlen, digest_words);
+  size_t required_word_len = ceil_div(required_byte_len, sizeof(uint32_t));
+  size_t num_iterations = ceil_div(required_word_len, digest_word_len);
   if (launder32(num_iterations) > 255) {
     return OTCRYPTO_BAD_ARGS;
   }
@@ -155,7 +155,7 @@ otcrypto_status_t otcrypto_kdf_hmac_ctr(
   // (see NIST SP 800-108r1, section 4.1)
   // The counter value is updated within the loop
   uint8_t counter_bytestring[4];
-  uint32_t prf_output_data[digest_words];
+  uint32_t prf_output_data[digest_word_len];
   uint32_t *t_data = prf_output_data;
   
   for (size_t i = 0; i < num_iterations; i++) {
@@ -163,20 +163,21 @@ otcrypto_status_t otcrypto_kdf_hmac_ctr(
     memcpy(input_data, counter_bytestring, 4);
     otcrypto_word32_buf_t t_words = {
         .data = t_data,
-        .len = digest_words,
+        .len = digest_word_len,
     };
 
     HARDENED_TRY(otcrypto_hmac(&key_derivation_key, input_buf, t_words));
-    memcpy(keying_material->keyblob + i * t_words.len, t_words.data, t_words.len * sizeof(uint32_t));
 
     if (keying_material->config.key_length == 128 && i == 2) { 
       LOG_INFO("it 0x%x:\n0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x", input_data[3],
-        keying_material->keyblob[i * t_words.len+0], keying_material->keyblob[i * t_words.len+1], keying_material->keyblob[i * t_words.len+2], keying_material->keyblob[i * t_words.len+3],
-        keying_material->keyblob[i * t_words.len+4], keying_material->keyblob[i * t_words.len+5], keying_material->keyblob[i * t_words.len+6], keying_material->keyblob[i * t_words.len+7]);
+        t_words.data[i * t_words.len+0], t_words.data[i * t_words.len+1], t_words.data[i * t_words.len+2], t_words.data[i * t_words.len+3],
+        t_words.data[i * t_words.len+4], t_words.data[i * t_words.len+5], t_words.data[i * t_words.len+6], t_words.data[i * t_words.len+7]);
     }
 
+    memcpy(keying_material->keyblob + i * t_words.len, t_words.data, t_words.len * sizeof(uint32_t));
+
     //Generate a mask (all-zero for now, since HMAC is unhardened anyaway).
-    uint32_t mask[digest_words];
+    uint32_t mask[digest_word_len];
     memset(mask, 0, sizeof(mask));
 
     // Construct a blinded key.
@@ -209,54 +210,46 @@ otcrypto_status_t otcrypto_kdf_kmac(
   }
 
   // Infer the digest size.
-  size_t digest_words = 0;
+  size_t digest_word_len = 0;
   HARDENED_TRY(digest_num_words_from_key_mode(
-      key_derivation_key.config.key_mode, &digest_words));
-
-  // Check the PRK configuration.
-  // TODO: replace with hmac ctr check
-  // HARDENED_TRY(hkdf_check_prk(digest_words, &key_derivation_key));
+      key_derivation_key.config.key_mode, &digest_word_len));
 
   // Ensure that the derived key is a symmetric key masked with XOR and is not
   // supposed to be hardware-backed.
-  // TODO: check if this is even necessary
   HARDENED_TRY(keyblob_ensure_xor_masked(keying_material->config));
 
   // Check the keyblob length.
-  size_t keyblob_bytelen =
+  size_t keyblob_byte_len =
       keyblob_num_words(keying_material->config) * sizeof(uint32_t);
-  if (launder32(keying_material->keyblob_length) != keyblob_bytelen) {
+  if (launder32(keying_material->keyblob_length) != keyblob_byte_len) {
     return OTCRYPTO_BAD_ARGS;
   }
-  HARDENED_CHECK_EQ(keying_material->keyblob_length, keyblob_bytelen);
+  HARDENED_CHECK_EQ(keying_material->keyblob_length, keyblob_byte_len);
 
   // Check that the unmasked key length is not too large for KMAC
-  // (see NIST SP 800-108r1, section 4.1)
-  // TODO: start with 255, fix later, we probably don't need 2^1040
-  if (launder32(required_byte_len) > 255) {
+  // (see NIST SP 800-108r1, section 4.4)
+  // TODO: We probably won't need the specified 2^1040 on OpenTitan
+  if (launder32(required_byte_len) > SIZE_MAX) {
     return OTCRYPTO_BAD_ARGS;
   }
-  HARDENED_CHECK_LE(required_byte_len, 255);
+  HARDENED_CHECK_LE(required_byte_len, SIZE_MAX);
 
   // Call KMAC to generate the derived key
   // (see NIST SP 800-108r1, section 4.4)
-  // TODO: double check in general
-  size_t required_wordlen = ceil_div(required_byte_len, sizeof(uint32_t));
-  size_t required_bit_len = required_byte_len * sizeof(uint8_t);
-  uint32_t keying_material_data[required_wordlen];
+  size_t required_word_len = ceil_div(required_byte_len, sizeof(uint32_t));
+  uint32_t keying_material_data[required_word_len];
   uint32_t *t_data = keying_material_data;
   otcrypto_word32_buf_t t_words = {
       .data = t_data,
-      .len = digest_words,
+      .len = required_word_len,
   };
 
-  // TODO: Is kdf_context really the input data? If not, what do I do with it?
   HARDENED_TRY(otcrypto_kmac(&key_derivation_key, kdf_context, kmac_mode,
-                             kdf_label, required_bit_len, t_words));
+                             kdf_label, required_byte_len, t_words));
   memcpy(keying_material->keyblob, t_words.data, required_byte_len);
 
-  // Generate a mask (all-zero for now, since HMAC is unhardened anyway).
-  uint32_t mask[digest_words];
+  // Generate a mask (all-zero for now, since KMAC is unhardened anyway).
+  uint32_t mask[required_word_len];
   memset(mask, 0, sizeof(mask));
 
   // Construct a blinded key.
@@ -264,6 +257,7 @@ otcrypto_status_t otcrypto_kdf_kmac(
                                          keying_material->config,
                                          keying_material->keyblob));
   keying_material->checksum = integrity_blinded_checksum(keying_material);
+
   return OTCRYPTO_OK;
 }
 
