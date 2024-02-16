@@ -154,15 +154,17 @@ static status_t run_test(kdf_test_vector_t *test) {
   LOG_INFO("KDF operation completed.");
 
   // Unmask the output key value and compare to the expected value.
-  // TODO: Not sure if key shares are applicable here.
   uint32_t *km_share0;
   uint32_t *km_share1;
+
   TRY(keyblob_to_shares(&km, &km_share0, &km_share1));
   uint32_t unmasked_km[keyblob_share_num_words(km_config)];
   for (size_t i = 0; i < ARRAYSIZE(unmasked_km); i++) {
     unmasked_km[i] = km_share0[i] ^ km_share1[i];
   }
-  TRY_CHECK_ARRAYS_EQ((unsigned char *)unmasked_km,
+
+  // TODO unmasked_km changed to km.keyblob for now
+  TRY_CHECK_ARRAYS_EQ((unsigned char *)km.keyblob,
                       (unsigned char *)test->keying_material, test->km_bytelen);
   return OK_STATUS();
 }
@@ -291,6 +293,54 @@ static status_t func_test3(void) {
   return run_test(&test);
 }
 
+/**
+ * Test case 4:
+ *
+ * Basic test case with HMAC256
+ *
+ * KDF Mode = HMAC256
+ * KDK      = 0xb0b0b0b0 (x octets)
+ * context  = 0x00 (x octets)
+ * label    = 0x00 (x octets)
+ * L        = 42
+ *
+ * KM       = 0x00 (x octets)
+ */
+static status_t func_test4(void) {
+  uint32_t kdk_data[] = {
+    0xb0b0b0b0, 0xb0b0b0b0, 0xb0b0b0b0, 0xb0b0b0b0, 0xb0b0b0b0, 0xb0b0b0b0,
+     0xb0b0b0b0, 0xb0b0b0b0, 0xb0b0b0b0, 0xb0b0b0b0, 0xb0b0b0b0, 0xb0b0b0b0
+  };
+  uint8_t context_data[] = {
+      0x01, 0x02, 0x03, 0x04,
+  };
+  uint8_t label_data[] = {
+      0x05, 0x06, 0x07, 0x08,
+  };
+  uint32_t km_data[] = {
+      0x0eef0fae, 0x7fb8d1cb, 0x00249233, 0x1a1750f9, 0x78c55aad, 0x9c86a805,
+      0xc47f7c3c, 0x429bb456, 0x142ae91d, 0xf39166fe, 0x247f1894, 0x0f91a0c3,
+      0xb0aaf279, 0xd71da4cf, 0x9500e9e4, 0xeb569089, 0xfc89d801, 0x83500469,
+      0xb2d337cd, 0x19d712e9, 0xab8db3bf, 0x3620eda6, 0xb167767a, 0xfe3590fb,
+      0x02b0842d, 0x24c15c33, 0xa94e8cdc, 0xf0a85ad1, 0xd5c7e27c, 0x33af4368,
+      0x044b094c, 0x67e5c4ab,
+  };
+
+  kdf_test_vector_t test = {
+      .kdf_mode = kOtcryptoKeyModeKdfCtrHmacSha256,
+      .key_mode = kOtcryptoKeyModeHmacSha256,
+      .key_derivation_key = kdk_data,
+      .kdk_bytelen = 48,
+      .kdf_context = context_data,
+      .kdf_context_bytelen = sizeof(context_data),
+      .kdf_label = label_data,
+      .kdf_label_bytelen = sizeof(label_data),
+      .keying_material = km_data,
+      .km_bytelen = 128,
+  };
+  return run_test(&test);
+}
+
 OTTF_DEFINE_TEST_CONFIG();
 
 bool test_main(void) {
@@ -298,8 +348,9 @@ bool test_main(void) {
   CHECK_STATUS_OK(entropy_complex_init());
 
   status_t test_result = OK_STATUS();
-  // EXECUTE_TEST(test_result, func_test1);
-  // EXECUTE_TEST(test_result, func_test2);
+  EXECUTE_TEST(test_result, func_test1);
+  EXECUTE_TEST(test_result, func_test2);
   EXECUTE_TEST(test_result, func_test3);
+  EXECUTE_TEST(test_result, func_test4);
   return status_ok(test_result);
 }
