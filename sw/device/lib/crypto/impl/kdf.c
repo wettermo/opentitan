@@ -151,35 +151,35 @@ otcrypto_status_t otcrypto_kdf_hmac_ctr(
   uint32_t *t_data = prf_output_data;
 
   for (size_t i = 0; i < num_iterations; i++) {
-   
     long_to_bytes(i + 1, counter_bytestring);
     memcpy(input_data, counter_bytestring, 4);
     otcrypto_word32_buf_t t_words = {
-      .data = t_data,
-      .len = digest_word_len,
+        .data = t_data,
+        .len = digest_word_len,
     };
-     
+
     HARDENED_TRY(otcrypto_hmac(&key_derivation_key, input_buf, t_words));
 
-    if (keying_material->config.key_length == 128) {
-      LOG_INFO(
-          "it 0x%x:\n0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x", input_data[3],
-          t_words.data[i * t_words.len + 0], t_words.data[i * t_words.len + 1],
-          t_words.data[i * t_words.len + 2], t_words.data[i * t_words.len + 3],
-          t_words.data[i * t_words.len + 4], t_words.data[i * t_words.len + 5],
-          t_words.data[i * t_words.len + 6], t_words.data[i * t_words.len + 7]);
-    }
+    // if (keying_material->config.key_length == 128) {
+    //   LOG_INFO(
+    //       "it 0x%x:\n0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x", input_data[3],
+    //       t_words.data[i * t_words.len + 0], t_words.data[i * t_words.len + 1],
+    //       t_words.data[i * t_words.len + 2], t_words.data[i * t_words.len + 3],
+    //       t_words.data[i * t_words.len + 4], t_words.data[i * t_words.len + 5],
+    //       t_words.data[i * t_words.len + 6], t_words.data[i * t_words.len + 7]);
+    // }
 
     memcpy(keying_material->keyblob + i * t_words.len, t_words.data,
            t_words.len * sizeof(uint32_t));
 
-     // Generate a mask (all-zero for now, since HMAC is unhardened anyaway).
+    // Generate a mask (all-zero for now, since HMAC is unhardened anyaway).
     uint32_t mask[digest_word_len];
     memset(mask, 0, sizeof(mask));
 
     // Construct a blinded key.
-    HARDENED_TRY(
-      keyblob_from_key_and_mask(prf_output_data, mask, keying_material->config, keying_material->keyblob + i * t_words.len));
+    HARDENED_TRY(keyblob_from_key_and_mask(
+        prf_output_data, mask, keying_material->config,
+        keying_material->keyblob + i * t_words.len));
   }
 
   keying_material->checksum = integrity_blinded_checksum(keying_material);

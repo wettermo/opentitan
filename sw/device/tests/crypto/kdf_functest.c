@@ -166,7 +166,7 @@ static status_t run_test(kdf_test_vector_t *test) {
   }
 
   // TODO ignore the unmasked_km for now, use km.keyblob
-  TRY_CHECK_ARRAYS_EQ((unsigned char *)km.keyblob,
+  TRY_CHECK_ARRAYS_EQ((unsigned char *)unmasked_km,
                       (unsigned char *)test->keying_material, test->km_bytelen);
   return OK_STATUS();
 }
@@ -323,8 +323,10 @@ static status_t func_test3(void) {
  *              d5c7e27c33af4368044b094c67e5c4ab (128 octets)
  */
 static status_t func_test4(void) {
-  uint32_t kdk_data[] = {0xb0b0b0b0, 0xb0b0b0b0, 0xb0b0b0b0, 0xb0b0b0b0,
-                         0xb0b0b0b0, 0xb0b0b0b0, 0xb0b0b0b0, 0xb0b0b0b0};
+  uint32_t kdk_data[] = {
+      0xb0b0b0b0, 0xb0b0b0b0, 0xb0b0b0b0, 0xb0b0b0b0,
+      0xb0b0b0b0, 0xb0b0b0b0, 0xb0b0b0b0, 0xb0b0b0b0,
+  };
   uint8_t context_data[] = {
       0x01,
       0x02,
@@ -364,6 +366,75 @@ static status_t func_test4(void) {
 /**
  * Test case 5:
  *
+ * Basic test case with HMAC
+ *
+ * KDF Mode = HMAC Counter
+ * KDK      = 0xb0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0
+ *              b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0
+ *              b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0 (48 octets)
+ * context  = 0x01020304 (4 octets)
+ * label    = 0x05060708 (4 octets)
+ * L = 1024
+ *
+ * KM       = 0x0eef0fae7fb8d1cb002492331a1750f9
+ *              78c55aad9c86a805c47f7c3c429bb456
+ *              142ae91df39166fe247f18940f91a0c3
+ *              b0aaf279d71da4cf9500e9e4eb569089
+ *              fc89d80183500469b2d337cd19d712e9
+ *              ab8db3bf3620eda6b167767afe3590fb
+ *              02b0842d24c15c33a94e8cdcf0a85ad1
+ *              d5c7e27c33af4368044b094c67e5c4ab (128 octets)
+ */
+static status_t func_test5(void) {
+  uint32_t kdk_data[] = {
+      0xfefefefe, 0xfefefefe, 0xfefefefe, 0xfefefefe, 0xfefefefe, 0xfefefefe,
+      0xfefefefe, 0xfefefefe, 0xfefefefe, 0xfefefefe, 0xfefefefe, 0xfefefefe,
+      0xfefefefe, 0xfefefefe, 0xfefefefe, 0xfefefefe, 0xfefefefe, 0xfefefefe,
+      0xfefefefe, 0xfefefefe, 0xfefefefe, 0xfefefefe, 0xfefefefe, 0xfefefefe,
+      0xfefefefe, 0xfefefefe, 0xfefefefe, 0xfefefefe, 0xfefefefe, 0xfefefefe,
+      0xfefefefe, 0xfefefefe,
+  };
+  uint8_t context_data[] = {
+      0x01,
+      0x02,
+      0x03,
+      0x04,
+  };
+  uint8_t label_data[] = {
+      0x05,
+      0x06,
+      0x07,
+      0x08,
+  };
+  uint32_t km_data[] = {
+      0x7855821a, 0x993293ce, 0xae4b4ccf, 0x31907097, 0xd2f6884d, 0x5c34aa97,
+      0x3e753f1a, 0xa5c222ce, 0xfa0e11ed, 0xe7c9a118, 0xd6946058, 0x7e55a11f,
+      0xcf7d3119, 0x22721012, 0x693c68de, 0x80761df7, 0x76dcbeac, 0x060daaa0,
+      0x83556ee4, 0x144d4c08, 0xa34f2255, 0x845b82d2, 0x6752b04c, 0xe7689370,
+      0xcdbdf311, 0x07b5e476, 0xfb946cf0, 0x6ed244ac, 0xc91245a4, 0x8c2c6417,
+      0xa07d19ec, 0xec844e1a, 0xb57d34ad, 0xf90479d4, 0xca6d887b, 0x4f19a4e8,
+      0xb70f90df, 0x186ae805, 0xc2c35982, 0x06bd4c63, 0xf205de6a, 0xdbe56adb,
+      0x5da034ed, 0x3cc7a4ec, 0xd6ebc3c4, 0xd164bb36, 0x2a950a7c, 0xa8d5c2d6,
+  };
+
+  kdf_test_vector_t test = {
+      .kdf_mode = kOtcryptoKeyModeKdfCtrHmacSha512,
+      .key_mode = kOtcryptoKeyModeHmacSha512,
+      .key_derivation_key = kdk_data,
+      .kdk_bytelen = 128,
+      .kdf_context = context_data,
+      .kdf_context_bytelen = sizeof(context_data),
+      .kdf_label = label_data,
+      .kdf_label_bytelen = sizeof(label_data),
+      .keying_material = km_data,
+      .km_bytelen = 192,
+  };
+  return run_test(&test);
+}
+
+/**
+ * Test case 6:
+ *
  * Basic test case with KMAC128
  *
  * KDF Mode = KMAC128
@@ -374,7 +445,7 @@ static status_t func_test4(void) {
  *
  * KM       = 0x... (128 octets)
  */
-static status_t func_test5(void) {
+static status_t func_test6(void) {
   uint32_t kdk_data[] = {
       0xb0b0b0b0, 0xb0b0b0b0, 0xb0b0b0b0, 0xb0b0b0b0, 0xb0b0b0b0, 0xb0b0b0b0,
       0xb0b0b0b0, 0xb0b0b0b0, 0xb0b0b0b0, 0xb0b0b0b0, 0xb0b0b0b0, 0xb0b0b0b0,
@@ -416,7 +487,7 @@ static status_t func_test5(void) {
 }
 
 /**
- * Test case 6:
+ * Test case 7:
  *
  * Basic test case with KMAC256
  *
@@ -428,7 +499,7 @@ static status_t func_test5(void) {
  *
  * KM       = 0... (64 octets)
  */
-static status_t func_test6(void) {
+static status_t func_test7(void) {
   uint32_t kdk_data[] = {
       0xb0b0b0b0, 0xb0b0b0b0, 0xb0b0b0b0, 0xb0b0b0b0, 0xb0b0b0b0, 0xb0b0b0b0,
       0xb0b0b0b0, 0xb0b0b0b0, 0xb0b0b0b0, 0xb0b0b0b0, 0xb0b0b0b0, 0xb0b0b0b0,
@@ -467,7 +538,7 @@ static status_t func_test6(void) {
 }
 
 /**
- * Test case 7:
+ * Test case 8:
  *
  * Basic test case with KMAC128
  *
@@ -479,7 +550,7 @@ static status_t func_test6(void) {
  *
  * KM       = 0x... (384 octets)
  */
-static status_t func_test7(void) {
+static status_t func_test8(void) {
   uint32_t kdk_data[] = {
       0xacacacac, 0xacacacac, 0xacacacac, 0xacacacac, 0xacacacac, 0xacacacac,
       0xacacacac, 0xacacacac, 0xacacacac, 0xacacacac, 0xacacacac, 0xacacacac,
@@ -539,9 +610,10 @@ bool test_main(void) {
   EXECUTE_TEST(test_result, func_test1);
   EXECUTE_TEST(test_result, func_test2);
   EXECUTE_TEST(test_result, func_test3);
-  //EXECUTE_TEST(test_result, func_test4);
+  EXECUTE_TEST(test_result, func_test4);
   EXECUTE_TEST(test_result, func_test5);
   EXECUTE_TEST(test_result, func_test6);
   EXECUTE_TEST(test_result, func_test7);
+  EXECUTE_TEST(test_result, func_test8);
   return status_ok(test_result);
 }
