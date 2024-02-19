@@ -40,14 +40,6 @@ static status_t digest_num_words_from_key_mode(otcrypto_key_mode_t key_mode,
       HARDENED_CHECK_EQ(key_mode, kOtcryptoKeyModeHmacSha512);
       *digest_words = 512 / 32;
       break;
-    case kOtcryptoKeyModeKmac128:
-      HARDENED_CHECK_EQ(key_mode, kOtcryptoKeyModeKmac128);
-      *digest_words = 128 / 32;  // TODO: check
-      break;
-    case kOtcryptoKeyModeKmac256:
-      HARDENED_CHECK_EQ(key_mode, kOtcryptoKeyModeKmac256);
-      *digest_words = 256 / 32;  // TODO: check
-      break;
     default:
       return OTCRYPTO_BAD_ARGS;
   }
@@ -59,17 +51,16 @@ static status_t digest_num_words_from_key_mode(otcrypto_key_mode_t key_mode,
  * Construct a bytestring representation of an integer.
  *
  * @param num Number to be converted.
- * @param[out] bytestring The output string. 
+ * @param[out] bytestring The output string.
  * @return OK or error.
  */
 static status_t long_to_bytes(size_t num, uint8_t *bytestring) {
+  bytestring[0] = (num >> 24) & 0xFF;
+  bytestring[1] = (num >> 16) & 0xFF;
+  bytestring[2] = (num >> 8) & 0xFF;
+  bytestring[3] = num & 0xFF;
 
-    bytestring[0] = (num >> 24) & 0xFF;
-    bytestring[1] = (num >> 16) & 0xFF;
-    bytestring[2] = (num >> 8) & 0xFF;
-    bytestring[3] = num & 0xFF;
-
-    return OTCRYPTO_OK;
+  return OTCRYPTO_OK;
 }
 
 /**
@@ -79,7 +70,7 @@ static status_t long_to_bytes(size_t num, uint8_t *bytestring) {
  * @return OK or error.
  */
 static status_t check_zero_byte(const otcrypto_const_byte_buf_t buffer) {
-  for(size_t i = 0; i < buffer.len; i++) {
+  for (size_t i = 0; i < buffer.len; i++) {
     if (0x00 == buffer.data[i]) {
       return OTCRYPTO_BAD_ARGS;
     }
@@ -130,7 +121,7 @@ otcrypto_status_t otcrypto_kdf_hmac_ctr(
 
   // Check if label or context contain 0x00 bytes
   // Since 0x00 is used as the delimiter between label and context
-  // there shouldn't be multiple instances of them in input data 
+  // there shouldn't be multiple instances of them in input data
   HARDENED_TRY(check_zero_byte(kdf_label));
   HARDENED_TRY(check_zero_byte(kdf_context));
 
@@ -138,14 +129,15 @@ otcrypto_status_t otcrypto_kdf_hmac_ctr(
   // [i]_2 || Label || 0x00 || Context || [L]_2 (see NIST SP 800-108r1,
   // section 4.1)
   // The counter value is updated within the loop instead of here
-  uint8_t
-      input_data[4 + kdf_label.len + 1 + kdf_context.len + 4];
+
+  uint8_t input_data[4 + kdf_label.len + 1 + kdf_context.len + 4];
   memcpy(input_data + 4, kdf_label.data, kdf_label.len);
   input_data[4 + kdf_label.len] = 0x00;
   memcpy(input_data + 4 + kdf_label.len + 1, kdf_context.data, kdf_context.len);
   uint8_t length_bytestring[4];
   long_to_bytes(required_byte_len * 8, length_bytestring);
-  memcpy(input_data + 4 + kdf_label.len + 1 + kdf_context.len, length_bytestring, 4);
+  memcpy(input_data + 4 + kdf_label.len + 1 + kdf_context.len,
+         length_bytestring, 4);
   otcrypto_const_byte_buf_t input_buf = {
       .data = input_data,
       .len = sizeof(input_data),
@@ -157,33 +149,37 @@ otcrypto_status_t otcrypto_kdf_hmac_ctr(
   uint8_t counter_bytestring[4];
   uint32_t prf_output_data[digest_word_len];
   uint32_t *t_data = prf_output_data;
-  
+
   for (size_t i = 0; i < num_iterations; i++) {
-    long_to_bytes(i+1, counter_bytestring);
+   
+    long_to_bytes(i + 1, counter_bytestring);
     memcpy(input_data, counter_bytestring, 4);
     otcrypto_word32_buf_t t_words = {
-        .data = t_data,
-        .len = digest_word_len,
+      .data = t_data,
+      .len = digest_word_len,
     };
-
+     
     HARDENED_TRY(otcrypto_hmac(&key_derivation_key, input_buf, t_words));
 
-    if (keying_material->config.key_length == 128 && i == 2) { 
-      LOG_INFO("it 0x%x:\n0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x", input_data[3],
-        t_words.data[i * t_words.len+0], t_words.data[i * t_words.len+1], t_words.data[i * t_words.len+2], t_words.data[i * t_words.len+3],
-        t_words.data[i * t_words.len+4], t_words.data[i * t_words.len+5], t_words.data[i * t_words.len+6], t_words.data[i * t_words.len+7]);
+    if (keying_material->config.key_length == 128) {
+      LOG_INFO(
+          "it 0x%x:\n0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x", input_data[3],
+          t_words.data[i * t_words.len + 0], t_words.data[i * t_words.len + 1],
+          t_words.data[i * t_words.len + 2], t_words.data[i * t_words.len + 3],
+          t_words.data[i * t_words.len + 4], t_words.data[i * t_words.len + 5],
+          t_words.data[i * t_words.len + 6], t_words.data[i * t_words.len + 7]);
     }
 
-    memcpy(keying_material->keyblob + i * t_words.len, t_words.data, t_words.len * sizeof(uint32_t));
+    memcpy(keying_material->keyblob + i * t_words.len, t_words.data,
+           t_words.len * sizeof(uint32_t));
 
-    //Generate a mask (all-zero for now, since HMAC is unhardened anyaway).
+     // Generate a mask (all-zero for now, since HMAC is unhardened anyaway).
     uint32_t mask[digest_word_len];
     memset(mask, 0, sizeof(mask));
 
     // Construct a blinded key.
-    HARDENED_TRY(keyblob_from_key_and_mask(prf_output_data, mask,
-                                        keying_material->config,
-                                        keying_material->keyblob+ i * t_words.len));
+    HARDENED_TRY(
+      keyblob_from_key_and_mask(prf_output_data, mask, keying_material->config, keying_material->keyblob + i * t_words.len));
   }
 
   keying_material->checksum = integrity_blinded_checksum(keying_material);
@@ -208,11 +204,6 @@ otcrypto_status_t otcrypto_kdf_kmac(
     // The underlying HMAC implementation is not currently hardened.
     return OTCRYPTO_NOT_IMPLEMENTED;
   }
-
-  // Infer the digest size.
-  size_t digest_word_len = 0;
-  HARDENED_TRY(digest_num_words_from_key_mode(
-      key_derivation_key.config.key_mode, &digest_word_len));
 
   // Ensure that the derived key is a symmetric key masked with XOR and is not
   // supposed to be hardware-backed.
