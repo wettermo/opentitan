@@ -174,7 +174,7 @@ static status_t run_test(kdf_test_vector_t *test) {
 /**
  * Test case 1:
  *
- * Basic test case with HMAC
+ * Basic test case with HMAC SHA256
  *
  * KDF Mode = HMAC Counter
  * KDK      = 0x00000000 (4 octets)
@@ -215,7 +215,7 @@ static status_t func_test1(void) {
 /**
  * Test case 2:
  *
- * Basic test case with HMAC
+ * Basic test case with HMAC SHA256
  *
  * KDF Mode = HMAC Counter
  * KDK      = 0x00000000 (4 octets)
@@ -256,7 +256,7 @@ static status_t func_test2(void) {
 /**
  * Test case 3:
  *
- * Basic test case with HMAC 384
+ * Basic test case with HMAC SHA384
  *
  * KDF Mode = HMAC Counter
  * KDK      = 0x00000000 (4 octets)
@@ -303,7 +303,7 @@ static status_t func_test3(void) {
 /**
  * Test case 4:
  *
- * Basic test case with HMAC
+ * Basic test case with HMAC SHA256
  *
  * KDF Mode = HMAC Counter
  * KDK      = 0xb0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0
@@ -324,8 +324,8 @@ static status_t func_test3(void) {
  */
 static status_t func_test4(void) {
   uint32_t kdk_data[] = {
-      0xb0b0b0b0, 0xb0b0b0b0, 0xb0b0b0b0, 0xb0b0b0b0,
-      0xb0b0b0b0, 0xb0b0b0b0, 0xb0b0b0b0, 0xb0b0b0b0,
+      0xb0b0b0b0, 0xb0b0b0b0, 0xb0b0b0b0, 0xb0b0b0b0, 0xb0b0b0b0, 0xb0b0b0b0,
+      0xb0b0b0b0, 0xb0b0b0b0, 0xb0b0b0b0, 0xb0b0b0b0, 0xb0b0b0b0, 0xb0b0b0b0,
   };
   uint8_t context_data[] = {
       0x01,
@@ -340,12 +340,10 @@ static status_t func_test4(void) {
       0x08,
   };
   uint32_t km_data[] = {
-      0x0eef0fae, 0x7fb8d1cb, 0x00249233, 0x1a1750f9, 0x78c55aad, 0x9c86a805,
-      0xc47f7c3c, 0x429bb456, 0x142ae91d, 0xf39166fe, 0x247f1894, 0x0f91a0c3,
-      0xb0aaf279, 0xd71da4cf, 0x9500e9e4, 0xeb569089, 0xfc89d801, 0x83500469,
-      0xb2d337cd, 0x19d712e9, 0xab8db3bf, 0x3620eda6, 0xb167767a, 0xfe3590fb,
-      0x02b0842d, 0x24c15c33, 0xa94e8cdc, 0xf0a85ad1, 0xd5c7e27c, 0x33af4368,
-      0x044b094c, 0x67e5c4ab,
+      0x234a1a5c, 0x7218ea8f, 0xf781c8ce, 0x4f6782b3, 0x57cd02f2, 0x4e92c44b,
+      0xf9178c5c, 0x79b8cba0, 0x3be8bc86, 0xb188d6f0, 0x83812d44, 0x2d50ad0e,
+      0x14ed8dbb, 0x0f3a9511, 0xe87b1ed5, 0x4fb1f5a5, 0xb63adf52, 0x67e5dda3,
+      0xa96e40a4, 0x900aa14b, 0xffade92c, 0x663ade6e, 0x6c92eb81, 0x5c97f620,
   };
 
   kdf_test_vector_t test = {
@@ -358,7 +356,7 @@ static status_t func_test4(void) {
       .kdf_label = label_data,
       .kdf_label_bytelen = sizeof(label_data),
       .keying_material = km_data,
-      .km_bytelen = 128,
+      .km_bytelen = 96,
   };
   return run_test(&test);
 }
@@ -366,7 +364,7 @@ static status_t func_test4(void) {
 /**
  * Test case 5:
  *
- * Basic test case with HMAC
+ * Basic test case with HMAC SHA512
  *
  * KDF Mode = HMAC Counter
  * KDK      = 0xb0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0
