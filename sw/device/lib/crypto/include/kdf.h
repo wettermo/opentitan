@@ -25,6 +25,11 @@ extern "C" {
  *
  * The supported PRF engine for the KDF function is HMAC (since KMAC does not
  * use the counter mode).
+ * Performs the key derivation function in counter mode wtih HMAC according to
+ * NIST SP 800-108r1.
+ *
+ * The supported PRF engine for the KDF function is HMAC (since KMAC does not
+ * use the counter mode).
  *
  * The caller should allocate and partially populate the `keying_material`
  * blinded key struct, including populating the key configuration and
@@ -51,6 +56,8 @@ otcrypto_status_t otcrypto_kdf_hmac_ctr(
     otcrypto_blinded_key_t *keying_material);
 
 /**
+ * Performs the key derivation function with single KMAC invocation according to
+ * NIST SP 800-108r1.
  * Performs the key derivation function with single KMAC invocation according to
  * NIST SP 800-108r1.
  *
@@ -90,6 +97,7 @@ otcrypto_status_t otcrypto_kdf_hmac_ctr(
  * populated by this function.
  * @return Result of the key derivation operation.
  */
+
 otcrypto_status_t otcrypto_kdf_kmac(
     const otcrypto_blinded_key_t key_derivation_key,
     otcrypto_kmac_mode_t kmac_mode, const otcrypto_const_byte_buf_t kdf_label,

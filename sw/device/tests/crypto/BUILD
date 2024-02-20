@@ -276,6 +276,21 @@ autogen_cryptotest_header(
 )
 
 opentitan_test(
+    name = "kdf_hmac_ctr_functest",
+    srcs = ["kdf_hmac_ctr_functest.c"],
+    exec_env = EARLGREY_TEST_ENVS,
+    verilator = verilator_params(
+        timeout = "long",
+    ),
+    deps = [
+        "//sw/device/lib/crypto/drivers:entropy",
+        "//sw/device/lib/crypto/impl:kdf",
+        "//sw/device/lib/crypto/impl:keyblob",
+        "//sw/device/lib/testing/test_framework:ottf_main",
+    ],
+)
+
+opentitan_test(
     name = "kmac_functest_hardcoded",
     srcs = ["kmac_functest.c"],
     exec_env = EARLGREY_TEST_ENVS,
