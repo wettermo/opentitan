@@ -11,9 +11,6 @@
 #include "sw/device/lib/crypto/include/datatypes.h"
 #include "sw/device/lib/crypto/include/mac.h"
 
-// TODO: remove after testing
-#include "sw/device/lib/runtime/log.h"
-
 // Module ID for status codes.
 #define MODULE_ID MAKE_MODULE_ID('k', 'd', 'f')
 
@@ -64,14 +61,14 @@ static status_t long_to_bytes(size_t num, uint8_t *bytestring) {
 }
 
 /**
- * Check if the string contains a 0x00 byte
+ * Check if the string contains a 0x00 byte.
  *
  * @param buffer Inspected string.
  * @return OK or error.
  */
 static status_t check_zero_byte(const otcrypto_const_byte_buf_t buffer) {
   for (size_t i = 0; i < buffer.len; i++) {
-    if (0x00 == buffer.data[i]) {
+    if (buffer.data[i] == 0x00) {
       return OTCRYPTO_BAD_ARGS;
     }
   }
@@ -87,6 +84,7 @@ otcrypto_status_t otcrypto_kdf_hmac_ctr(
       key_derivation_key.keyblob == NULL) {
     return OTCRYPTO_BAD_ARGS;
   }
+
   if (launder32(keying_material->config.security_level) !=
           kOtcryptoKeySecurityLevelLow ||
       launder32(key_derivation_key.config.security_level) !=
@@ -103,6 +101,7 @@ otcrypto_status_t otcrypto_kdf_hmac_ctr(
   // Ensure that the derived key is a symmetric key masked with XOR and is not
   // supposed to be hardware-backed.
   HARDENED_TRY(keyblob_ensure_xor_masked(keying_material->config));
+
   // Check the keyblob length.
   size_t keyblob_byte_len =
       keyblob_num_words(keying_material->config) * sizeof(uint32_t);
@@ -110,14 +109,15 @@ otcrypto_status_t otcrypto_kdf_hmac_ctr(
     return OTCRYPTO_BAD_ARGS;
   }
   HARDENED_CHECK_EQ(keying_material->keyblob_length, keyblob_byte_len);
+
   // Check that the unmasked key length is not too large for HMAC CTR
   // (see NIST SP 800-108r1, section 4.1)
   size_t required_word_len = ceil_div(required_byte_len, sizeof(uint32_t));
   size_t num_iterations = ceil_div(required_word_len, digest_word_len);
-  if (launder32(num_iterations) > 255) {
+  if (launder32(num_iterations) > UINT32_MAX) {
     return OTCRYPTO_BAD_ARGS;
   }
-  HARDENED_CHECK_LE(num_iterations, 255);
+  HARDENED_CHECK_LE(num_iterations, UINT32_MAX);
 
   // Check if label or context contain 0x00 bytes
   // Since 0x00 is used as the delimiter between label and context
@@ -211,7 +211,7 @@ otcrypto_status_t otcrypto_kdf_kmac(
 
   // Check that the unmasked key length is not too large for KMAC
   // (see NIST SP 800-108r1, section 4.4)
-  // TODO: We probably won't need the specified 2^1040 on OpenTitan
+  // TODO: Specification states  L < 2^1040 - 1
   if (launder32(required_byte_len) > SIZE_MAX) {
     return OTCRYPTO_BAD_ARGS;
   }

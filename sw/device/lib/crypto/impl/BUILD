@@ -96,7 +96,6 @@ cc_library(
         ":status",
         "//sw/device/lib/base:math",
         "//sw/device/lib/crypto/include:datatypes",
-        "//sw/device/lib/runtime:log",
     ],
 )
 

@@ -60,7 +60,6 @@ typedef struct kdf_test_vector {
   size_t km_bytelen;
 } kdf_test_vector_t;
 
-// TODO: don't know if applicable
 // Random value for masking, as large as the longest test key. This value
 // should not affect the result.
 static const uint32_t kTestMask[] = {
@@ -165,7 +164,6 @@ static status_t run_test(kdf_test_vector_t *test) {
     unmasked_km[i] = km_share0[i] ^ km_share1[i];
   }
 
-  // TODO ignore the unmasked_km for now, use km.keyblob
   TRY_CHECK_ARRAYS_EQ((unsigned char *)unmasked_km,
                       (unsigned char *)test->keying_material, test->km_bytelen);
   return OK_STATUS();
@@ -182,7 +180,7 @@ static status_t run_test(kdf_test_vector_t *test) {
  * label    = 0x02 (1 octets)
  * L        = 32
  *
- * KM       = 0xfa6d7a61 (4 octets)
+ * KM       = 0x617a6dfa (4 octets)
  */
 static status_t func_test1(void) {
   uint32_t kdk_data[] = {
@@ -223,8 +221,8 @@ static status_t func_test1(void) {
  * label    = 0x02 (1 octets)
  * L        = 256
  *
- * KM       = 0xd1c92a5e1940f781dbf366885d2e8e11
- *              fcd77ff36ee7d2b46d2bd220393d2014 (32 octets)
+ * KM       = 0x5e2ac9d181f740198866f3db118e2e5d
+ *              f37fd7fcb4d2e76e20d22b6d14203d39 (32 octets)
  */
 static status_t func_test2(void) {
   uint32_t kdk_data[] = {
@@ -236,8 +234,11 @@ static status_t func_test2(void) {
   uint8_t label_data[] = {
       0x02,
   };
-  uint32_t km_data[] = {0xd1c92a5e, 0x1940f781, 0xdbf36688, 0x5d2e8e11,
-                        0xfcd77ff3, 0x6ee7d2b4, 0x6d2bd220, 0x393d2014};
+  uint32_t km_data[] = {
+      0xd1c92a5e, 0x1940f781, 0xdbf36688, 0x5d2e8e11,
+      0xfcd77ff3, 0x6ee7d2b4, 0x6d2bd220, 0x393d2014,
+  };
+
   kdf_test_vector_t test = {
       .kdf_mode = kOtcryptoKeyModeKdfCtrHmacSha256,
       .key_mode = kOtcryptoKeyModeHmacSha256,
@@ -264,10 +265,10 @@ static status_t func_test2(void) {
  * label    = 0x02 (1 octets)
  * L        = 512
  *
- * KM       = 0xb51b43f331f9b85f52a562278f3c0c397
- *              6ed91d2fdfbdc99c365866ddbf52315cc
- *              aad572acc901cfe9a0bf703e726c5327f
- *              9acd8951cc061b4e0fdc6235b60b0 (64 octets)
+ * KM       = 0x22f8457a0087da4538ecd625834cc167
+ *              dd3d22c9e603c2a54013b1c812766c4c
+ *              b8f1ad2923e9c9982ec74626177be1aa
+ *              90931d28356d51f2abd7a6b75ad651eb (64 octets)
  */
 static status_t func_test3(void) {
   uint32_t kdk_data[] = {
@@ -313,14 +314,12 @@ static status_t func_test3(void) {
  * label    = 0x05060708 (4 octets)
  * L = 1024
  *
- * KM       = 0x0eef0fae7fb8d1cb002492331a1750f9
- *              78c55aad9c86a805c47f7c3c429bb456
- *              142ae91df39166fe247f18940f91a0c3
- *              b0aaf279d71da4cf9500e9e4eb569089
- *              fc89d80183500469b2d337cd19d712e9
- *              ab8db3bf3620eda6b167767afe3590fb
- *              02b0842d24c15c33a94e8cdcf0a85ad1
- *              d5c7e27c33af4368044b094c67e5c4ab (128 octets)
+ * KM       = 0x5c1a4a238fea1872cec881f7b382674f
+ *              f202cd574bc4924e5c8c17f9a0cbb879
+ *              86bce83bf0d688b1442d81830ead502d
+ *              bb8ded1411953a0fd51e7be8a5f5b14f
+ *              52df3ab6a3dde567a4406ea94ba10a90
+ *              2ce9adff6ede3a6681eb926c20f6975c (128 octets)
  */
 static status_t func_test4(void) {
   uint32_t kdk_data[] = {
@@ -374,14 +373,18 @@ static status_t func_test4(void) {
  * label    = 0x05060708 (4 octets)
  * L = 1024
  *
- * KM       = 0x0eef0fae7fb8d1cb002492331a1750f9
- *              78c55aad9c86a805c47f7c3c429bb456
- *              142ae91df39166fe247f18940f91a0c3
- *              b0aaf279d71da4cf9500e9e4eb569089
- *              fc89d80183500469b2d337cd19d712e9
- *              ab8db3bf3620eda6b167767afe3590fb
- *              02b0842d24c15c33a94e8cdcf0a85ad1
- *              d5c7e27c33af4368044b094c67e5c4ab (128 octets)
+ * KM       = 0x1a825578ce933299cf4c4bae97709031
+ *              4d88f6d297aa345c1a3f753ece22c2a5
+ *              ed110efa18a1c9e7586094d61fa1557e
+ *              19317dcf12107222de683c69f71d7680
+ *              acbedc76a0aa0d06e46e5583084c4d14
+ *              55224fa3d2825b844cb05267709368e7
+ *              11f3bdcd76e4b507f06c94fbac44d26e
+ *              a44512c917642c8cec197da01a4e84ec
+ *              ad347db5d47904f97b886dcae8a4194f
+ *              df900fb705e86a188259c3c2634cbd06
+ *              6ade05f2db6ae5dbed34a05deca4c73c
+ *              c4c3ebd636bb64d17c0a952ad6c2d5a8 (128 octets)
  */
 static status_t func_test5(void) {
   uint32_t kdk_data[] = {
@@ -436,12 +439,21 @@ static status_t func_test5(void) {
  * Basic test case with KMAC128
  *
  * KDF Mode = KMAC128
- * KDK      = 0xb0b0b0b0... (48 octets)
+ * KDK      = 0xb0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0
+ *              b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0
+ *              b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0 (48 octets)
  * context  = 0x01020304 (4 octets)
  * label    = 0x05060708 (4 octets)
  * L        = 1024
  *
- * KM       = 0x... (128 octets)
+ * KM       = 0xcb8b0ea17d1291ccf8a4731f86ef2590
+ *              8d5be06bf476af5c9b0413230022b2bc
+ *              29c2d2b5aaf3a7ea845d6a7eadcd72b6
+ *              175ec11746549952d66869cddd610f65
+ *              82da4b36a3a7d090603d7582ed63d9dc
+ *              ff6107065826d769e75b9c0587218282
+ *              96ff8d2ae5fced111357d3ab8fb8e08b
+ *              22279c0087919002d89b319b (128 octets)
  */
 static status_t func_test6(void) {
   uint32_t kdk_data[] = {
@@ -490,12 +502,17 @@ static status_t func_test6(void) {
  * Basic test case with KMAC256
  *
  * KDF Mode = KMAC256
- * KDK      = 0xb0b0b0b0... (48 octets)
+ * KDK      = 0xb0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0
+ *              b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0
+ *              b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0 (48 octets)
  * context  = 0x01020304 (4 octets)
  * label    = 0x05060708 (4 octets)
  * L        = 512
  *
- * KM       = 0... (64 octets)
+ * KM       = 0xcdecd5a5d495e20fb3f90940118ecaa2
+ *              dbbcc7775d57551a1d5ff309431c89bd
+ *              2dfb5c21476fc3575a817c34706a9ef4
+ *              a89e6f1e7f76cfde5872bcddf6812304 (64 octets)
  */
 static status_t func_test7(void) {
   uint32_t kdk_data[] = {
@@ -541,12 +558,38 @@ static status_t func_test7(void) {
  * Basic test case with KMAC128
  *
  * KDF Mode = KMAC128
- * KDK      = 0x... (128 octets)
+ * KDK      = 0xacacacacacacacacacacacacacacacac
+ *              acacacacacacacacacacacacacacacac
+ *              acacacacacacacacacacacacacacacac
+ *              acacacacacacacacacacacacacacacac (128 octets)
  * context  = 0xdeadbeef (4 octets)
  * label    = 0xbadebadebadebadebadebadebadebade (16 octets)
  * L        = 3072
  *
- * KM       = 0x... (384 octets)
+ * KM       = 0x0c6fbdde5cef81af33077f7d2cc304b9
+ *              b86e885d156250fb3d86d53d28e429bd
+ *              616de8b2859f91e4ce842f14fa699d3d
+ *              79d09c7c52cdec4de6bd60fa604ee364
+ *              2842b8a38693cdcb09b0556282ebfa98
+ *              7542791c2b17c8ae679ac05a0a7a309d
+ *              fe7b76e44e8a5fdb91da9ee4041eb278
+ *              5a1f77c73960c157793a9199a8b206a3
+ *              664e3d4336db334636f0397a7b5f0db3
+ *              91cb8c224f02c16ec835376015f380cd
+ *              82774f7df9eacf6fcaa93e65fd519597
+ *              75505235ec39ae94bfedd0dab0e398c0
+ *              25030b64d626a58bbf94292a69dc9b0c
+ *              ea75622743c426cc967d9e328131cbe2
+ *              d92ae7f3eb38b124e26a2cfa936dfcf4
+ *              c7455c1a5043c8dfb61df10f42cc8499
+ *              cf0f2bf0a4b1b981e87722d8cf814ad7
+ *              4b2757439255e8b151e4a4f59fbd3932
+ *              8e6107acbee201c3495afc610a243a0a
+ *              179368b1f917970f42e7666a96aa4a2d
+ *              f5a7e4dc3da995337dcf1bbc4f2302b5
+ *              69907d496fe4ce04a60f15ca4521a34e
+ *              ff4f05c36b2e2795196308dc3ea53702
+ *              9cb20ec81f7908a4d2c67df9215e876b (384 octets)
  */
 static status_t func_test8(void) {
   uint32_t kdk_data[] = {
