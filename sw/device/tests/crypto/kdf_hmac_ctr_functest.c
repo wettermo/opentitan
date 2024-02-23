@@ -19,10 +19,6 @@
  */
 typedef struct kdf_test_vector {
   /**
-   * Kdf mode for KDF (e.g. kOtcryptoKeyModeKdfCtrHmac).
-   */
-  otcrypto_key_mode_t kdf_mode;
-  /**
    * Key mode for KDF (e.g. kOtcryptoKeyModeHmacSha256).
    */
   otcrypto_key_mode_t key_mode;
@@ -132,20 +128,12 @@ static status_t run_test(kdf_test_vector_t *test) {
   };
 
   // Run the KDF specified by the key mode.
-  switch (test->kdf_mode) {
-    case kOtcryptoKeyModeKdfCtrHmacSha256:
-    case kOtcryptoKeyModeKdfCtrHmacSha384:
-    case kOtcryptoKeyModeKdfCtrHmacSha512:
+  switch (test->key_mode) {
+    case kOtcryptoKeyModeHmacSha256:
+    case kOtcryptoKeyModeHmacSha384:
+    case kOtcryptoKeyModeHmacSha512:
       TRY(otcrypto_kdf_hmac_ctr(kdk, label, context, km.config.key_length,
                                 &km));
-      break;
-    case kOtcryptoKeyModeKdfKmac128:
-      TRY(otcrypto_kdf_kmac(kdk, kOtcryptoKmacModeKmac128, label, context,
-                            km.config.key_length, &km));
-      break;
-    case kOtcryptoKeyModeKdfKmac256:
-      TRY(otcrypto_kdf_kmac(kdk, kOtcryptoKmacModeKmac256, label, context,
-                            km.config.key_length, &km));
       break;
     default:
       LOG_INFO("Should never end up here.");
@@ -196,7 +184,6 @@ static status_t func_test1(void) {
       0xfa6d7a61,
   };
   kdf_test_vector_t test = {
-      .kdf_mode = kOtcryptoKeyModeKdfCtrHmacSha256,
       .key_mode = kOtcryptoKeyModeHmacSha256,
       .key_derivation_key = kdk_data,
       .kdk_bytelen = 4,
@@ -240,7 +227,6 @@ static status_t func_test2(void) {
   };
 
   kdf_test_vector_t test = {
-      .kdf_mode = kOtcryptoKeyModeKdfCtrHmacSha256,
       .key_mode = kOtcryptoKeyModeHmacSha256,
       .key_derivation_key = kdk_data,
       .kdk_bytelen = 4,
@@ -287,7 +273,6 @@ static status_t func_test3(void) {
   };
 
   kdf_test_vector_t test = {
-      .kdf_mode = kOtcryptoKeyModeKdfCtrHmacSha384,
       .key_mode = kOtcryptoKeyModeHmacSha384,
       .key_derivation_key = kdk_data,
       .kdk_bytelen = 4,
@@ -346,7 +331,6 @@ static status_t func_test4(void) {
   };
 
   kdf_test_vector_t test = {
-      .kdf_mode = kOtcryptoKeyModeKdfCtrHmacSha256,
       .key_mode = kOtcryptoKeyModeHmacSha256,
       .key_derivation_key = kdk_data,
       .kdk_bytelen = 48,
@@ -419,7 +403,6 @@ static status_t func_test5(void) {
   };
 
   kdf_test_vector_t test = {
-      .kdf_mode = kOtcryptoKeyModeKdfCtrHmacSha512,
       .key_mode = kOtcryptoKeyModeHmacSha512,
       .key_derivation_key = kdk_data,
       .kdk_bytelen = 128,
