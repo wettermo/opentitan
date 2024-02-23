@@ -98,7 +98,7 @@ otcrypto_status_t otcrypto_kdf_hmac_ctr(
   // Check for null label with nonzero length.
   if (kdf_label.data == NULL && kdf_label.len != 0) {
     return OTCRYPTO_BAD_ARGS;
-  } 
+  }
 
   // Check for null context with nonzero length.
   if (kdf_context.data == NULL && kdf_context.len != 0) {

@@ -163,36 +163,41 @@ static status_t run_test(kdf_test_vector_t *test) {
  * Basic test case with HMAC SHA256
  *
  * KDF Mode = HMAC Counter
- * KDK      = 0x00000000 (4 octets)
- * context  = 0x03 (1 octets)
- * label    = 0x02 (1 octets)
- * L        = 32
+ * KDK      = 0x0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b
+ *              0b0b0b0b0b0b0b (22 octets)
+ * context  = 0x0102030405060708090a0b0c (12 octets)
+ * label    = 0xf0f1f2f3f4f5f6f7f8f9 (10 octets)
+ * L        = 336
  *
- * KM       = 0x617a6dfa (4 octets)
+ * KM       = 0x54cd4b8b3ad19e565a8542764afb6c
+ *              cca4c5ea81832bacf39846d108c5b8
+ *              c83dfda9bb6f40be8a4f8e0e0000 (42 octets)
  */
 static status_t func_test1(void) {
   uint32_t kdk_data[] = {
-      0x00000000,
+      0x0b0b0b0b, 0x0b0b0b0b, 0x0b0b0b0b, 0x0b0b0b0b, 0x0b0b0b0b, 0x00000b0b,
   };
   uint8_t context_data[] = {
-      0x03,
+      0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c,
   };
   uint8_t label_data[] = {
-      0x02,
+      0xf0, 0xf1, 0xf2, 0xf3, 0xf4, 0xf5, 0xf6, 0xf7, 0xf8, 0xf9,
   };
   uint32_t km_data[] = {
-      0xfa6d7a61,
+      0x8b4bcd54, 0x569ed13a, 0x7642855a, 0xcc6cfb4a, 0x81eac5a4, 0xf3ac2b83,
+      0x08d14698, 0x3dc8b8c5, 0x6fbba9fd, 0x4f8abe40, 0x00000e8e,
   };
+
   kdf_test_vector_t test = {
       .key_mode = kOtcryptoKeyModeHmacSha256,
       .key_derivation_key = kdk_data,
-      .kdk_bytelen = 4,
+      .kdk_bytelen = 22,
       .kdf_context = context_data,
       .kdf_context_bytelen = sizeof(context_data),
       .kdf_label = label_data,
       .kdf_label_bytelen = sizeof(label_data),
       .keying_material = km_data,
-      .km_bytelen = 4,
+      .km_bytelen = 42,
   };
   return run_test(&test);
 }
@@ -203,39 +208,72 @@ static status_t func_test1(void) {
  * Basic test case with HMAC SHA256
  *
  * KDF Mode = HMAC Counter
- * KDK      = 0x00000000 (4 octets)
- * context  = 0x03 (1 octets)
- * label    = 0x02 (1 octets)
- * L        = 256
+ * KDK      = 0x000102030405060708090a0b0c0d0e0f
+ *              101112131415161718191a1b1c1d1e1f
+ *              202122232425262728292a2b2c2d2e2f
+ *              303132333435363738393a3b3c3d3e3f
+ *              404142434445464748494a4b4c4d4e4f (80 octets)
+ * context  = 0x606162636465666768696a6b6c6d6e6f
+ *              707172737475767778797a7b7c7d7e7f
+ *              808182838485868788898a8b8c8d8e8f
+ *              909192939495969798999a9b9c9d9e9f
+ *              a0a1a2a3a4a5a6a7a8a9aaabacadaeaf (80 octets)
+ * label    = 0xb0b1b2b3b4b5b6b7b8b9babbbcbdbebf
+ *              c0c1c2c3c4c5c6c7c8c9cacbcccdcecf
+ *              d0d1d2d3d4d5d6d7d8d9dadbdcdddedf
+ *              e0e1e2e3e4e5e6e7e8e9eaebecedeeef
+ *              f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff (80 octets)
+ * L        = 656
  *
- * KM       = 0x5e2ac9d181f740198866f3db118e2e5d
- *              f37fd7fcb4d2e76e20d22b6d14203d39 (32 octets)
+ * KM       = 0xfa061438f57a9901b95e8332b3c6a1
+ *              94229196bad78d8ece1607d360d9e0
+ *              3d4ab3d089b483f91bfe8177faed7a
+ *              d4d9bd1ec875e4281a38d0008fcea9
+ *              1b09fc8126fd74d56c8197ed9c0a81
+ *              ebd5fffc999018 (82 octets)
  */
 static status_t func_test2(void) {
   uint32_t kdk_data[] = {
-      0x00000000,
+      0x03020100, 0x07060504, 0x0b0a0908, 0x0f0e0d0c, 0x13121110,
+      0x17161514, 0x1b1a1918, 0x1f1e1d1c, 0x23222120, 0x27262524,
+      0x2b2a2928, 0x2f2e2d2c, 0x33323130, 0x37363534, 0x3b3a3938,
+      0x3f3e3d3c, 0x43424140, 0x47464544, 0x4b4a4948, 0x4f4e4d4c,
   };
   uint8_t context_data[] = {
-      0x03,
+      0x60, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68, 0x69, 0x6a, 0x6b,
+      0x6c, 0x6d, 0x6e, 0x6f, 0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77,
+      0x78, 0x79, 0x7a, 0x7b, 0x7c, 0x7d, 0x7e, 0x7f, 0x80, 0x81, 0x82, 0x83,
+      0x84, 0x85, 0x86, 0x87, 0x88, 0x89, 0x8a, 0x8b, 0x8c, 0x8d, 0x8e, 0x8f,
+      0x90, 0x91, 0x92, 0x93, 0x94, 0x95, 0x96, 0x97, 0x98, 0x99, 0x9a, 0x9b,
+      0x9c, 0x9d, 0x9e, 0x9f, 0xa0, 0xa1, 0xa2, 0xa3, 0xa4, 0xa5, 0xa6, 0xa7,
+      0xa8, 0xa9, 0xaa, 0xab, 0xac, 0xad, 0xae, 0xaf,
   };
   uint8_t label_data[] = {
-      0x02,
+      0xb0, 0xb1, 0xb2, 0xb3, 0xb4, 0xb5, 0xb6, 0xb7, 0xb8, 0xb9, 0xba, 0xbb,
+      0xbc, 0xbd, 0xbe, 0xbf, 0xc0, 0xc1, 0xc2, 0xc3, 0xc4, 0xc5, 0xc6, 0xc7,
+      0xc8, 0xc9, 0xca, 0xcb, 0xcc, 0xcd, 0xce, 0xcf, 0xd0, 0xd1, 0xd2, 0xd3,
+      0xd4, 0xd5, 0xd6, 0xd7, 0xd8, 0xd9, 0xda, 0xdb, 0xdc, 0xdd, 0xde, 0xdf,
+      0xe0, 0xe1, 0xe2, 0xe3, 0xe4, 0xe5, 0xe6, 0xe7, 0xe8, 0xe9, 0xea, 0xeb,
+      0xec, 0xed, 0xee, 0xef, 0xf0, 0xf1, 0xf2, 0xf3, 0xf4, 0xf5, 0xf6, 0xf7,
+      0xf8, 0xf9, 0xfa, 0xfb, 0xfc, 0xfd, 0xfe, 0xff,
   };
   uint32_t km_data[] = {
-      0xd1c92a5e, 0x1940f781, 0xdbf36688, 0x5d2e8e11,
-      0xfcd77ff3, 0x6ee7d2b4, 0x6d2bd220, 0x393d2014,
+      0x381406fa, 0x01997af5, 0x32835eb9, 0x94a1c6b3, 0xba969122, 0xce8e8dd7,
+      0x60d30716, 0x4a3de0d9, 0xb489d0b3, 0xfe1bf983, 0xedfa7781, 0xbdd9d47a,
+      0xe475c81e, 0xd0381a28, 0xa9ce8f00, 0x81fc091b, 0xd574fd26, 0xed97816c,
+      0xeb810a9c, 0x99fcffd5, 0x00001890,
   };
 
   kdf_test_vector_t test = {
       .key_mode = kOtcryptoKeyModeHmacSha256,
       .key_derivation_key = kdk_data,
-      .kdk_bytelen = 4,
+      .kdk_bytelen = 80,
       .kdf_context = context_data,
       .kdf_context_bytelen = sizeof(context_data),
       .kdf_label = label_data,
       .kdf_label_bytelen = sizeof(label_data),
       .keying_material = km_data,
-      .km_bytelen = 32,
+      .km_bytelen = 82,
   };
   return run_test(&test);
 }
@@ -246,42 +284,34 @@ static status_t func_test2(void) {
  * Basic test case with HMAC SHA384
  *
  * KDF Mode = HMAC Counter
- * KDK      = 0x00000000 (4 octets)
- * context  = 0x03 (1 octets)
- * label    = 0x02 (1 octets)
- * L        = 512
+ * KDK      = 0x0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b
+ *              0b0b0b0b0b0b (22 octets)
+ * context  = (0 octets)
+ * label    = (0 octets)
+ * L        = 336
  *
- * KM       = 0x22f8457a0087da4538ecd625834cc167
- *              dd3d22c9e603c2a54013b1c812766c4c
- *              b8f1ad2923e9c9982ec74626177be1aa
- *              90931d28356d51f2abd7a6b75ad651eb (64 octets)
+ * KM       = 0x1f242b13cf0780398a52b84919ebd4b0
+ *              d28d5992b49b439f9943e8ae61f2bb6e
+ *              eadd33288590a4c8c8610000 (42 octets)
  */
 static status_t func_test3(void) {
   uint32_t kdk_data[] = {
-      0x00000000,
-  };
-  uint8_t context_data[] = {
-      0x03,
-  };
-  uint8_t label_data[] = {
-      0x02,
+      0x0b0b0b0b, 0x0b0b0b0b, 0x0b0b0b0b, 0x0b0b0b0b, 0x0b0b0b0b, 0x00000b0b,
   };
   uint32_t km_data[] = {
-      0x7a45f822, 0x45da8700, 0x25d6ec38, 0x67c14c83, 0xc9223ddd, 0xa5c203e6,
-      0xc8b11340, 0x4c6c7612, 0x29adf1b8, 0x98c9e923, 0x2646c72e, 0xaae17b17,
-      0x281d9390, 0xf2516d35, 0xb7a6d7ab, 0xeb51d65a,
+      0x132b241f, 0x398007cf, 0x49b8528a, 0xb0d4eb19, 0x92598dd2, 0x9f439bb4,
+      0xaee84399, 0x6ebbf261, 0x2833ddea, 0xc8a49085, 0x000061c8,
   };
-
   kdf_test_vector_t test = {
       .key_mode = kOtcryptoKeyModeHmacSha384,
       .key_derivation_key = kdk_data,
-      .kdk_bytelen = 4,
-      .kdf_context = context_data,
-      .kdf_context_bytelen = sizeof(context_data),
-      .kdf_label = label_data,
-      .kdf_label_bytelen = sizeof(label_data),
+      .kdk_bytelen = 22,
+      .kdf_context = NULL,
+      .kdf_context_bytelen = 0,
+      .kdf_label = NULL,
+      .kdf_label_bytelen = 0,
       .keying_material = km_data,
-      .km_bytelen = 64,
+      .km_bytelen = 42,
   };
   return run_test(&test);
 }
@@ -289,7 +319,7 @@ static status_t func_test3(void) {
 /**
  * Test case 4:
  *
- * Basic test case with HMAC SHA256
+ * Basic test case with HMAC SHA384
  *
  * KDF Mode = HMAC Counter
  * KDK      = 0xb0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0
@@ -297,14 +327,14 @@ static status_t func_test3(void) {
  *              b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0 (48 octets)
  * context  = 0x01020304 (4 octets)
  * label    = 0x05060708 (4 octets)
- * L = 1024
+ * L        = 768
  *
- * KM       = 0x5c1a4a238fea1872cec881f7b382674f
- *              f202cd574bc4924e5c8c17f9a0cbb879
- *              86bce83bf0d688b1442d81830ead502d
- *              bb8ded1411953a0fd51e7be8a5f5b14f
- *              52df3ab6a3dde567a4406ea94ba10a90
- *              2ce9adff6ede3a6681eb926c20f6975c (128 octets)
+ * KM       = 0xfebfd966ec77e3d8674bd348e3078605
+ *              d4ea32e70b416c38031e4a6d130c37dc
+ *              edb9c8d0ee740e9110ac3b6799c1ba29
+ *              18c6362c2bac3c6321c5db0b4058b339
+ *              4d111ac00dbbc23fd09879b1c12b3441
+ *              1809d62a371c41beb57639a2a4ec1dbe (96 octets)
  */
 static status_t func_test4(void) {
   uint32_t kdk_data[] = {
@@ -324,14 +354,14 @@ static status_t func_test4(void) {
       0x08,
   };
   uint32_t km_data[] = {
-      0x234a1a5c, 0x7218ea8f, 0xf781c8ce, 0x4f6782b3, 0x57cd02f2, 0x4e92c44b,
-      0xf9178c5c, 0x79b8cba0, 0x3be8bc86, 0xb188d6f0, 0x83812d44, 0x2d50ad0e,
-      0x14ed8dbb, 0x0f3a9511, 0xe87b1ed5, 0x4fb1f5a5, 0xb63adf52, 0x67e5dda3,
-      0xa96e40a4, 0x900aa14b, 0xffade92c, 0x663ade6e, 0x6c92eb81, 0x5c97f620,
+      0x66d9bffe, 0xd8e377ec, 0x48d34b67, 0x058607e3, 0xe732ead4, 0x386c410b,
+      0x6d4a1e03, 0xdc370c13, 0xd0c8b9ed, 0x910e74ee, 0x673bac10, 0x29bac199,
+      0x2c36c618, 0x633cac2b, 0x0bdbc521, 0x39b35840, 0xc01a114d, 0x3fc2bb0d,
+      0xb17998d0, 0x41342bc1, 0x2ad60918, 0xbe411c37, 0xa23976b5, 0xbe1deca4,
   };
 
   kdf_test_vector_t test = {
-      .key_mode = kOtcryptoKeyModeHmacSha256,
+      .key_mode = kOtcryptoKeyModeHmacSha384,
       .key_derivation_key = kdk_data,
       .kdk_bytelen = 48,
       .kdf_context = context_data,
@@ -355,7 +385,7 @@ static status_t func_test4(void) {
  *              b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0 (48 octets)
  * context  = 0x01020304 (4 octets)
  * label    = 0x05060708 (4 octets)
- * L = 1024
+ * L        = 1536
  *
  * KM       = 0x1a825578ce933299cf4c4bae97709031
  *              4d88f6d297aa345c1a3f753ece22c2a5
