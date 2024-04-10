@@ -150,6 +150,28 @@ cc_library(
 )
 
 cc_library(
+    name = "rng_fi",
+    srcs = [
+        "rng_fi.c",
+    ],
+    hdrs = ["rng_fi.h"],
+    deps = [
+        "//sw/device/lib/base:csr",
+        "//sw/device/lib/base:memory",
+        "//sw/device/lib/base:status",
+        "//sw/device/lib/dif:flash_ctrl",
+        "//sw/device/lib/dif:rv_core_ibex",
+        "//sw/device/lib/runtime:log",
+        "//sw/device/lib/testing:flash_ctrl_testutils",
+        "//sw/device/lib/testing/test_framework:ujson_ottf",
+        "//sw/device/lib/ujson",
+        "//sw/device/sca/lib:sca",
+        "//sw/device/tests/penetrationtests/firmware:sca_lib",
+        "//sw/device/tests/penetrationtests/json:rng_fi_commands",
+    ],
+)
+
+cc_library(
     name = "sca_lib",
     srcs = ["sca_lib.c"],
     hdrs = ["sca_lib.h"],

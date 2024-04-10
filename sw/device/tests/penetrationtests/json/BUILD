@@ -72,6 +72,13 @@ cc_library(
 )
 
 cc_library(
+    name = "rng_fi_commands",
+    srcs = ["rng_fi_commands.c"],
+    hdrs = ["rng_fi_commands.h"],
+    deps = ["//sw/device/lib/ujson"],
+)
+
+cc_library(
     name = "sha3_sca_commands",
     srcs = ["sha3_sca_commands.c"],
     hdrs = ["sha3_sca_commands.h"],
